@@ -76,7 +76,7 @@ type Config struct {
 	Description string                        `yaml:"description" default:"A might Micron API!"`
 	Version     string                        `yaml:"version" default:"v1"`
 	Api         *ApiConfig                    `yaml:"api" default:"{}"`
-	Casbin      *CasbinConfig                 `yaml:"casbin" default:"{}"`
+	
 	Database    *DatabaseConfig               `yaml:"database" default:"{}"`
 	Cache       *CacheConfig                  `yaml:"cache" default:"{}"`
 	Providers   *Providers                    `yaml:"providers" default:"{}"`
@@ -86,8 +86,7 @@ type Config struct {
 type ApiConfig struct {
 	Env        string         `yaml:"env" env:"MICRON_API_ENV"`
 	EnableCors bool           `yaml:"enable_cors"`
-	Url        string         `yaml:"url" env:"MICRON_API_URL" default:"http://localhost:8080/api"`
-	WebUrl     string         `yaml:"web_url" env:"MICRON_WEB_URL" default:"http://localhost:3000"`
+	Url        string         `yaml:"url" env:"MICRON_API_URL" default:"http://localhost:8081/api"`
 	Auth       *ApiAuthConfig `yaml:"auth" default:"{}"`
 	CertPath   string         `yaml:"cert_path" env:"MICRON_TLS_CERT_PATH"`
 	KeyPath    string         `yaml:"key_path" env:"MICRON_TLS_KEY_PATH"`
@@ -108,28 +107,30 @@ type ApiAuthConfig struct {
 type Providers struct {
 	Aws               map[string]*AwsConfig `yaml:"aws" default:"{}"`
 	SSO               *SSOConfig            `yaml:"sso" default:"{}"`
-	DisabledProviders []string              `yaml:"disabled_providers" default:"[]"`
+	Casbin      	  *CasbinConfig         `yaml:"casbin" default:"{}"`
+	EnabledProviders  []string              `yaml:"enabled_providers" default:"[]"`
 }
 
+
 func (p *Providers) IsEnabled(name string) bool {
-	for _, disabled := range p.DisabledProviders {
-		if strings.EqualFold(disabled, name) {
-			return false
+	for _, enabled := range p.EnabledProviders {
+		if strings.EqualFold(enabled, name) {
+			return true
 		}
 	}
 
-	return true
+	return false
 }
 
 type DatabaseConfig struct {
-	Type     DbType `yaml:"type" env:"DATABASE_TYPE"`
-	DSN      string `yaml:"dsn" env:"DATABASE_DSN"`
+	Type     DbType `yaml:"type" env:"DATABASE_TYPE" default:"sqlite"`
+	DSN      string `yaml:"dsn" env:"DATABASE_DSN" default:"file::memory:data.db"`
 	Username string `yaml:"username" env:"DATABASE_USERNAME"`
 	Password string `yaml:"password" env:"DATABASE_PASSWORD"`
 }
 
 type CacheConfig struct {
-	Type        CacheType    `yaml:"type" env:"CACHE_TYPE"`
+	Type        CacheType    `yaml:"type" env:"CACHE_TYPE" default:"memory"`
 	RedisConfig *RedisConfig `yaml:"redis_config" env:"REDIS_CONFIG"`
 }
 
@@ -178,7 +179,9 @@ type EnvironmentConfig struct {
 func (c Config) Validate() error {
 	configErrors := ConfigError{}
 
-	if err := c.Casbin.validateCasbinConfig(); err != nil {
+	if err := c.Providers.Casbin.validateCasbinConfig(
+		c.Providers.IsEnabled("auth"),
+	); err != nil {
 		configErrors.Append(ConfigErrorFromError(err).Errs...)
 	}
 
@@ -198,7 +201,12 @@ func (c Config) Validate() error {
 	return nil
 }
 
-func (c *CasbinConfig) validateCasbinConfig() error {
+func (c *CasbinConfig) validateCasbinConfig(enabled bool) error {
+
+	if !enabled {
+		return nil
+	}
+
 	configErrors := ConfigError{}
 
 	if len(c.ValidEmailDomains) == 0 {

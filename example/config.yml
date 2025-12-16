@@ -1,6 +1,0 @@
-casbin:
-  valid_email_domains:
-    - "@lundhe.audio"
-providers:
-  disabled_providers:
-    - sso

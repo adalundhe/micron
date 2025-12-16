@@ -30,7 +30,7 @@ type Router struct {
 	Api         *variant.Variant
 	Engine      *gin.Engine
 	Spec        *fizz.Fizz
-	Service         *service.Service
+	Service      *service.Service
 	server      *http.Server
 	tlsServer   *http.Server
 	quitChannel chan os.Signal
@@ -54,6 +54,12 @@ type GroupConfig struct {
 	Groups      []*group.Group
 	Routes      []*route.Route
 	Middleware  []gin.HandlerFunc
+}
+
+type Routes struct {
+	Groups []*group.Group
+	Endpoints []*route.Route
+	Middleware []gin.HandlerFunc
 }
 
 
@@ -100,6 +106,8 @@ func (r *Router) CreateRoute(
 	method string,
 	config RouteConfig,
 ) *route.Route {
+
+
 	return route.CreateRoute(
 		path,
 		method,
@@ -128,32 +136,10 @@ func (r *Router) CreateGroup(
 	)
 }
 
-func (r *Router) CreateVariant(
-	name string,
-	description string,
-) *variant.Variant {
-
-	newVariant := variant.NewVariant(name, description)
-
-	variantPath := fmt.Sprintf("/%s", newVariant.Version)
-	if r.BaseUrl != "" && r.BaseUrl != "/" {
-		variantPath = fmt.Sprintf("%s/%s", r.BaseUrl, newVariant.Version)
-	}
-
-	newVariant.SetPath(variantPath)
-
-	return newVariant
-}
-
-func (r *Router) SetVariant(
-	v *variant.Variant,
-) {
-	r.Api = v
-}
-
 func (r *Router) AddVariant(
 	name string,
 	description string,
+	routes *Routes,
 ) *variant.Variant {
 	newVariant := variant.NewVariant(name, description)
 
@@ -164,7 +150,21 @@ func (r *Router) AddVariant(
 
 	newVariant.SetPath(variantPath)
 
+	if len(routes.Groups) > 0 {
+		newVariant.AddGroups(routes.Groups...)
+	}
+
+	if len(routes.Endpoints) > 0 {
+		newVariant.AddRoutes(routes.Endpoints...)
+	}
+
+	if len(routes.Middleware) > 0 {
+		newVariant.AddMiddleware(routes.Middleware...)
+	}
+
 	r.Api = newVariant
+	r.Api.SetService(r.Service)
+
 
 	return newVariant
 }

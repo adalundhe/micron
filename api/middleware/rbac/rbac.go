@@ -17,13 +17,16 @@ type RBAC struct {
 	AuthMiddleware    *jwt.GinJWTMiddleware[*authz.AuthClaims]
 }
 
+
 func RBACMiddleware(
 	ctx context.Context,
 	cfg *config.Config,
+	opts auth.TokenAuthOpts,
 ) (*RBAC, error) {
 	authMiddleware, err := auth.CreateJWTTokenHandler(
 		ctx,
 		cfg,
+		opts,
 	)
 
 	if err != nil {

@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"github.com/adalundhe/micron/internal/config"
 	"github.com/uptrace/bun"
@@ -54,8 +53,6 @@ func NewDB(t config.DbType, dsn string, username string, password string) (*bun.
 		}
 		return bun.NewDB(conn, pgdialect.New()), nil
 	case config.Sqlite:
-		slog.Warn("WARNING: sqlite is not suitable for use outside of testing")
-		slog.Warn("flyway migrations are not supported for sqlite. You will need to manually manage the schema")
 		if dsn == "" {
 			dsn = defaultSqliteDSN
 		}

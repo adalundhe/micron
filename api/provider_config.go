@@ -18,37 +18,41 @@ type overrideProviders struct {
 }
 
 type providerConfig struct {
-	disabledProviders []string
+	enabledProviders []string
 	Overrides         *overrideProviders
 }
 
 func (p *providerConfig) IsEnabled(providerName string) bool {
 
-	for _, disabledProvider := range p.disabledProviders {
-		if strings.EqualFold(providerName, disabledProvider) {
-			return false
+	for _, enabledProvider := range p.enabledProviders {
+		if strings.EqualFold(providerName, enabledProvider) {
+			return true
 		}
 	}
 
-	return true
+	return false
 
 }
 
-func (p *providerConfig) AddDisabledProviders(providerNames []string) {
+func (p *providerConfig) AddEnabledProviders(providerNames []string) {
 	for _, providerName := range providerNames {
-		p.appendProviderIfNotExists(providerName)
+		if providerName != "" {
+			p.appendProviderIfNotExists(providerName)
+		}
 	}
 }
 
 func (p *providerConfig) appendProviderIfNotExists(providerName string) {
 
-	for _, disabledProvider := range p.disabledProviders {
-		if strings.EqualFold(providerName, disabledProvider) {
+	for _, enabledProvider := range p.enabledProviders {
+		if strings.EqualFold(providerName, enabledProvider) {
 			return
 		}
 	}
 
-	p.disabledProviders = append(p.disabledProviders, providerName)
+	if providerName != "" {
+		p.enabledProviders = append(p.enabledProviders, providerName)
+	}
 
 }
 
@@ -57,14 +61,16 @@ func createProviderConfig(providerNames []string) *providerConfig {
 	loweredProviderNames := []string{}
 
 	for _, name := range providerNames {
-		loweredProviderNames = append(
-			loweredProviderNames,
-			strings.ToLower(name),
-		)
+		if name != "" {
+			loweredProviderNames = append(
+				loweredProviderNames,
+				strings.ToLower(name),
+			)
+		}
 	}
 
 	return &providerConfig{
-		disabledProviders: loweredProviderNames,
+		enabledProviders: loweredProviderNames,
 		Overrides:         &overrideProviders{},
 	}
 

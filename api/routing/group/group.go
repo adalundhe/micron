@@ -1,6 +1,7 @@
 package group
 
 import (
+	"log/slog"
 	"strings"
 
 	"github.com/adalundhe/micron/api/routing/route"
@@ -205,6 +206,7 @@ func (g *Group) AddGroupToGroup(group *fizz.RouterGroup) {
 }
 
 func (g *Group) AddRouteToGroup(group *fizz.RouterGroup, route *route.Route) {
+	slog.Info("GOT:", slog.Any("group", group), slog.Any("route", route.StatusCode))
 	handlers := []gin.HandlerFunc{}
 	handlers = append(handlers, route.Middleware...)
 

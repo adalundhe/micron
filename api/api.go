@@ -45,10 +45,10 @@ type App struct {
 	ModelPath         string
 	PolicyPath        string
 	LogLevel          string
-	DisabledProviders string
+	EnabledProviders string
 	IDPFactory        func(ctx context.Context, cfg *config.Config, cache stores.Cache, providers *providerConfig, awsProviderFactory aws.AWSProviderFactory) (idp.IdentityProvider, error)
 	IDPEnabled        bool
-	Build             func(ctx context.Context, routes *router.Router, api *service.Service, cfg *config.Config) error
+	Build             func(ctx context.Context, routes *router.Router, api *service.Service, cfg *config.Config) (*router.Router, error)
 	cfg *config.Config
 	runCmd *cobra.Command
 }
@@ -68,7 +68,7 @@ func loadAppDefaults(app *App) (*App, error) {
 	}
 
 	if app.HealthCheckPort == 0 {
-		app.HealthCheckPort = 9080
+		app.HealthCheckPort = 9081
 	}
 
 	if app.IDPEnabled && app.IDPFactory == nil {
@@ -88,7 +88,7 @@ func loadAppDefaults(app *App) (*App, error) {
 	}
 
 	if app.Port == 0 {
-		app.Port = 8080
+		app.Port = 8081
 	}
 
 	if app.TLSPort == 0 {
@@ -210,7 +210,7 @@ func setupApi(
 		app.Version = cfg.Version
 	}
 
-	providers.AddDisabledProviders(cfg.Providers.DisabledProviders)
+	providers.AddEnabledProviders(cfg.Providers.EnabledProviders)
 
 	err := otel.SetupOTelSDK(ctx, config.NewBuildInfo(app.Name, app.Version))
 	if err != nil {
@@ -304,7 +304,7 @@ func setupApi(
 	enforcer := providers.Overrides.Auth
 	auth.AuthEnabled = providers.IsEnabled("auth")
 	if providers.Overrides.Auth == nil && auth.AuthEnabled {
-		enforcer, err = createEnforcer(app, cfg.Casbin, idpProvider)
+		enforcer, err = createEnforcer(app, cfg.Providers.Casbin, idpProvider)
 	}
 
 	if err != nil {
@@ -312,7 +312,7 @@ func setupApi(
 	}
 
 	if !auth.AuthEnabled {
-		slog.Warn("Warning - auth is disabled - this should be done for debugging or development purposes only!")
+		slog.Warn("Warning - auth is enabled - this should be done for debugging or development purposes only!")
 	}
 
 	auth.Enforcer = enforcer
@@ -325,7 +325,7 @@ func setupApi(
 	router.SetNoMethod()
 	router.SetDefaults(defaults.CreateDefaultHandlers())
 
-	if err := app.Build(
+	if router, err = app.Build(
 		ctx,
 		router,
 		apiService,
@@ -447,7 +447,7 @@ func Create(app *App) (*App, error) {
 				app.cfg,
 				apiService,
 				createProviderConfig(
-					strings.Split(app.DisabledProviders, ","),
+					strings.Split(app.EnabledProviders, ","),
 				),
 				app,
 			)
@@ -477,7 +477,7 @@ func Create(app *App) (*App, error) {
 	runCmd.Flags().StringVarP(&app.ConfigPath, "config", "C", "config.yml", "Path to the config.yaml")
 	runCmd.Flags().StringVarP(&app.ModelPath, "model", "M", "model.conf", "Path to the Casbin model.conf")
 	runCmd.Flags().StringVarP(&app.PolicyPath, "policy", "P", "policy.csv", "Path to the Casbin policy.csv")
-	runCmd.Flags().StringVarP(&app.DisabledProviders, "disable", "d", "", "A comma-delimited list of providers to disable")
+	runCmd.Flags().StringVarP(&app.EnabledProviders, "disable", "d", "", "A comma-delimited list of providers to disable")
 	runCmd.Flags().StringVarP(&app.LogLevel, "log-level", "l", "info", "Set server log level")
 	runCmd.Flags().StringVarP(&app.Version, "version", "v", "v1", "Set the API version")
 
@@ -499,6 +499,7 @@ func (a *App) Run(command string, description string, altDescriptors ...string) 
 		Short: description,
 		Long: altDescriptor,
 	}
+
 
 	rootCmd.AddCommand(a.runCmd)
 

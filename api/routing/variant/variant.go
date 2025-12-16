@@ -26,8 +26,15 @@ func NewVariant(version string, description string) *Variant {
 			variantPath,
 			group.GroupConfig{
 				Description: description,
+				Routes: []*route.Route{},
+				Groups: []*group.Group{},
+				Middleware: []gin.HandlerFunc{},
 			}),
 	}
+}
+
+func (v *Variant) SetService(serv *service.Service) {
+	v.Service = serv
 }
 
 func (v *Variant) GetPath() string {

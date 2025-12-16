@@ -17,6 +17,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
+
 var (
 	sub       = "sub"
 	realm     = "micron"
@@ -34,6 +35,17 @@ var (
 	authorizedIssuers []string
 )
 
+type TokenAuthOpts struct {
+	Validator func(data interface{}, c *gin.Context) bool
+	SigningAlgorithm string
+	IdentityKey string
+	Realm string
+	Timeout time.Duration
+	MaxRefresh time.Duration
+	TokenLookup string
+	TokenHeadName string
+}
+
 func ContainsValidValue(authorized []string, candidate string) bool {
 	for _, value := range authorized {
 		if value == candidate {
@@ -44,9 +56,11 @@ func ContainsValidValue(authorized []string, candidate string) bool {
 	return false
 }
 
+
 func CreateJWTTokenHandler(
 	ctx context.Context,
 	cfg *config.Config,
+	opts TokenAuthOpts,
 ) (*adaJwt.GinJWTMiddleware[*authz.AuthClaims], error) {
 
 	var signers []adaJwt.Signer
@@ -83,7 +97,7 @@ func CreateJWTTokenHandler(
 		authorizedIssuers = cfg.Api.Auth.AllowedIssuers
 	}
 
-	jwtMiddleware, err := adaJwt.New(&adaJwt.GinJWTMiddleware[*authz.AuthClaims]{
+	middlewareConfig := &adaJwt.GinJWTMiddleware[*authz.AuthClaims]{
 		CheckAllSigners:  true,
 		Realm:            realm,
 		Timeout:          time.Hour,
@@ -195,7 +209,41 @@ func CreateJWTTokenHandler(
 		TokenLookup:   "header: Authorization, query: token, cookie: jwt",
 		TokenHeadName: "Bearer",
 		TimeFunc:      time.Now,
-	}, signers...)
+	}
+
+	if opts.Validator != nil {
+		middlewareConfig.Validator = opts.Validator
+	}
+
+	if opts.SigningAlgorithm != "" {
+		middlewareConfig.SigningAlgorithm = opts.SigningAlgorithm
+	}
+
+	if opts.IdentityKey != "" {
+		middlewareConfig.IdentityKey = opts.IdentityKey
+	}
+
+	if opts.MaxRefresh != 0 {
+		middlewareConfig.MaxRefresh = opts.MaxRefresh
+	}
+
+	if opts.Realm != "" {
+		middlewareConfig.Realm = opts.Realm
+	}
+
+	if opts.Timeout != 0 {
+		middlewareConfig.Timeout = opts.Timeout
+	}
+
+	if opts.TokenHeadName != "" {
+		middlewareConfig.TokenHeadName = opts.TokenHeadName
+	}
+
+	if opts.TokenLookup != "" {
+		middlewareConfig.TokenLookup = opts.TokenLookup
+	}
+
+	jwtMiddleware, err := adaJwt.New(middlewareConfig, signers...)
 
 	if err != nil {
 		log.Fatalf("failed to create JWT middleware - %s", err)
