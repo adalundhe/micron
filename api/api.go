@@ -12,10 +12,10 @@ import (
 	"sync"
 
 	"github.com/adalundhe/micron/api/auth"
-	api "github.com/adalundhe/micron/api/internal/provider"
-	"github.com/adalundhe/micron/api/internal/route"
-	"github.com/adalundhe/micron/api/internal/router"
-	"github.com/adalundhe/micron/api/routes/service"
+	defaults "github.com/adalundhe/micron/api/routes/service"
+	"github.com/adalundhe/micron/api/routing/route"
+	"github.com/adalundhe/micron/api/routing/router"
+	"github.com/adalundhe/micron/api/service"
 	"github.com/adalundhe/micron/internal/config"
 	"github.com/adalundhe/micron/internal/otel"
 	"github.com/adalundhe/micron/internal/provider"
@@ -29,6 +29,11 @@ import (
 	"github.com/uptrace/bun"
 )
 
+type RunOptions struct {
+	ShortDescription string
+	LongDescription string
+}
+
 type App struct {
 	Name              string
 	Description       string
@@ -41,9 +46,11 @@ type App struct {
 	PolicyPath        string
 	LogLevel          string
 	DisabledProviders string
-	IDPFactory        func(ctx context.Context, cfg *config.Config, cache stores.Cache, providers *ProviderConfig, awsProviderFactory aws.AWSProviderFactory) (idp.IdentityProvider, error)
+	IDPFactory        func(ctx context.Context, cfg *config.Config, cache stores.Cache, providers *providerConfig, awsProviderFactory aws.AWSProviderFactory) (idp.IdentityProvider, error)
 	IDPEnabled        bool
-	Build             func(ctx context.Context, router *router.Router, api *api.API, cfg *config.Config) error
+	Build             func(ctx context.Context, routes *router.Router, api *service.Service, cfg *config.Config) error
+	cfg *config.Config
+	runCmd *cobra.Command
 }
 
 func loadAppDefaults(app *App) (*App, error) {
@@ -154,7 +161,7 @@ func createDb(databaseConfig *config.DatabaseConfig) (*bun.DB, error) {
 	return dbConn, nil
 }
 
-func CreateEnforcer(
+func createEnforcer(
 	app *App,
 	casbinConfig *config.CasbinConfig,
 	idpProvider idp.IdentityProvider,
@@ -186,14 +193,10 @@ func CreateEnforcer(
 func setupApi(
 	ctx context.Context,
 	cfg *config.Config,
-	apiService *api.API,
-	providers *ProviderConfig,
+	apiService *service.Service,
+	providers *providerConfig,
 	app *App,
 ) (*router.Router, error) {
-
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
 
 	if app.Name == "" {
 		app.Name = cfg.Name
@@ -239,7 +242,7 @@ func setupApi(
 	dbUserRepo := stores.NewDbUserRepository(dbConn)
 	jobStore := stores.NewJobStore(dbConn)
 
-	apiService.SetStores(&api.APIStores{
+	apiService.SetStores(&service.ServiceStores{
 		Cache:    &cache,
 		DB:       dbConn,
 		Jobs:     jobStore,
@@ -280,7 +283,7 @@ func setupApi(
 		auth.SSOEnabled = false
 	}
 
-	apiService.SetProviders(&api.APIProviders{
+	apiService.SetProviders(&service.ServiceProviders{
 		AWS: awsProviderFactory,
 		Idp: idpProvider,
 		JWS: jwsProvider,
@@ -301,7 +304,7 @@ func setupApi(
 	enforcer := providers.Overrides.Auth
 	auth.AuthEnabled = providers.IsEnabled("auth")
 	if providers.Overrides.Auth == nil && auth.AuthEnabled {
-		enforcer, err = CreateEnforcer(app, cfg.Casbin, idpProvider)
+		enforcer, err = createEnforcer(app, cfg.Casbin, idpProvider)
 	}
 
 	if err != nil {
@@ -320,7 +323,7 @@ func setupApi(
 	}
 
 	router.SetNoMethod()
-	router.SetDefaults(service.CreateDefaultHandlers())
+	router.SetDefaults(defaults.CreateDefaultHandlers())
 
 	if err := app.Build(
 		ctx,
@@ -341,7 +344,7 @@ func setupApi(
 	return router, nil
 }
 
-func createHealthCheckApi(api *api.API) (*router.Router, error) {
+func createHealthCheckApi(api *service.Service) (*router.Router, error) {
 	healthCheckApi, err := router.NewRouter("/", api)
 	if err != nil {
 		return nil, err
@@ -359,7 +362,7 @@ func createHealthCheckApi(api *api.API) (*router.Router, error) {
 	)
 
 	healthCheckApi.SetNoMethod()
-	healthCheckApi.SetDefaults(service.CreateDefaultHandlers())
+	healthCheckApi.SetDefaults(defaults.CreateDefaultHandlers())
 
 	return healthCheckApi, nil
 
@@ -402,16 +405,16 @@ func runServers(
 	slog.Info("API shutdown complete")
 }
 
-func Create(app *App) *cobra.Command {
+func Create(app *App) (*App, error) {
 
 	app, err := loadAppDefaults(app)
 	if err != nil {
-		log.Fatalf("Encountered error - %s - initializing app defaults", err.Error())
+		return nil, err
 	}
 
 	runCmd := &cobra.Command{
 		Use:   "run",
-		Short: "Run the API server",
+		Short: fmt.Sprintf("Run the server"),
 		Long: fmt.Sprintf(
 			`Starts and runs the API on the provided or default
 		port (%d).`,
@@ -419,20 +422,31 @@ func Create(app *App) *cobra.Command {
 		),
 		Run: func(cmd *cobra.Command, args []string) {
 
+			cfg, err := loadConfig(app)
+			if err != nil {
+				log.Fatalf("Encountered error loading config - %s", err.Error())
+			}
+
+			if err := cfg.Validate(); err != nil {
+				log.Fatalf("Encountered error validating config - %s", err.Error())
+			}
+
+			app.cfg = cfg
+
+
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
-			cfg, err := loadConfig(app)
 			if err != nil {
 				log.Fatalf("error loading config - %s", err)
 			}
 
-			apiService := api.NewApi(cfg.Api.Env)
+			apiService := service.NewService(app.cfg.Api.Env)
 			srv, err := setupApi(
 				ctx,
-				cfg,
+				app.cfg,
 				apiService,
-				CreateProviderConfig(
+				createProviderConfig(
 					strings.Split(app.DisabledProviders, ","),
 				),
 				app,
@@ -442,7 +456,7 @@ func Create(app *App) *cobra.Command {
 				log.Fatalf("encountered error - %s", err)
 			}
 
-			healthCheckServer, err := createHealthCheckApi(srv.API)
+			healthCheckServer, err := createHealthCheckApi(srv.Service)
 			if err != nil {
 				log.Fatalf("encountered error starting healthcheck API - %s", err)
 			}
@@ -467,5 +481,27 @@ func Create(app *App) *cobra.Command {
 	runCmd.Flags().StringVarP(&app.LogLevel, "log-level", "l", "info", "Set server log level")
 	runCmd.Flags().StringVarP(&app.Version, "version", "v", "v1", "Set the API version")
 
-	return runCmd
+	app.runCmd = runCmd
+
+	return app, nil
+}
+
+func (a *App) Run(command string, description string, altDescriptors ...string) error {
+
+	altDescriptor := description
+	if len(altDescriptors) > 0 {
+		altDescriptor = altDescriptors[0]
+	}
+	
+
+	rootCmd := &cobra.Command{
+		Use:   command,
+		Short: description,
+		Long: altDescriptor,
+	}
+
+	rootCmd.AddCommand(a.runCmd)
+
+	return rootCmd.Execute()
+
 }

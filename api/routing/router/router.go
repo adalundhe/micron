@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/adalundhe/micron/api/internal/group"
-	api "github.com/adalundhe/micron/api/internal/provider"
-	"github.com/adalundhe/micron/api/internal/route"
-	"github.com/adalundhe/micron/api/internal/variant"
-	"github.com/adalundhe/micron/api/routes/service"
+	defaults "github.com/adalundhe/micron/api/routes/service"
+	"github.com/adalundhe/micron/api/routing/group"
+	"github.com/adalundhe/micron/api/routing/route"
+	"github.com/adalundhe/micron/api/routing/variant"
+	"github.com/adalundhe/micron/api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/loopfz/gadgeto/tonic"
 	swagger "github.com/num30/gin-swagger-ui"
@@ -30,7 +30,7 @@ type Router struct {
 	Api         *variant.Variant
 	Engine      *gin.Engine
 	Spec        *fizz.Fizz
-	API         *api.API
+	Service         *service.Service
 	server      *http.Server
 	tlsServer   *http.Server
 	quitChannel chan os.Signal
@@ -41,7 +41,23 @@ type RouterOptions struct {
 	TLSPort int
 }
 
-func NewRouter(path string, api *api.API) (*Router, error) {
+type RouteConfig struct {
+	Endpoint   interface{}
+	Spec       []fizz.OperationOption
+	Middleware []gin.HandlerFunc
+	RawHandler gin.HandlerFunc
+	StatusCode int
+}
+
+type GroupConfig struct {
+	Description string
+	Groups      []*group.Group
+	Routes      []*route.Route
+	Middleware  []gin.HandlerFunc
+}
+
+
+func NewRouter(path string, service *service.Service) (*Router, error) {
 	// Create gin engine without default middleware
 	engine := gin.New()
 
@@ -73,10 +89,66 @@ func NewRouter(path string, api *api.API) (*Router, error) {
 		BaseUrl: path,
 		Engine:  engine,
 		Spec:    fizz.NewFromEngine(engine),
-		API:     api,
+		Service:     service,
 	}
 
 	return r, nil
+}
+
+func (r *Router) CreateRoute(
+	path string,
+	method string,
+	config RouteConfig,
+) *route.Route {
+	return route.CreateRoute(
+		path,
+		method,
+		route.RouteConfig{
+			Endpoint:   config.Endpoint,
+			Spec:       config.Spec,
+			Middleware: config.Middleware,
+			RawHandler: config.RawHandler,
+			StatusCode: config.StatusCode,
+		},
+	)
+}
+
+func (r *Router) CreateGroup(
+	path string,
+	config GroupConfig,
+) *group.Group {
+	return  group.CreateGroup(
+		path,
+		group.GroupConfig{
+			Description: config.Description,
+			Groups:      config.Groups,
+			Middleware:  config.Middleware,
+			Routes:      config.Routes,
+		},
+	)
+}
+
+func (r *Router) CreateVariant(
+	name string,
+	description string,
+) *variant.Variant {
+
+	newVariant := variant.NewVariant(name, description)
+
+	variantPath := fmt.Sprintf("/%s", newVariant.Version)
+	if r.BaseUrl != "" && r.BaseUrl != "/" {
+		variantPath = fmt.Sprintf("%s/%s", r.BaseUrl, newVariant.Version)
+	}
+
+	newVariant.SetPath(variantPath)
+
+	return newVariant
+}
+
+func (r *Router) SetVariant(
+	v *variant.Variant,
+) {
+	r.Api = v
 }
 
 func (r *Router) AddVariant(
@@ -160,7 +232,7 @@ func (r *Router) AddGroups(groups ...*group.Group) {
 	}
 }
 
-func (r *Router) SetDefaults(defaultHandlers service.ServiceDefaults) {
+func (r *Router) SetDefaults(defaultHandlers defaults.ServiceDefaults) {
 	r.Engine.NoRoute(defaultHandlers.NoRoute...)
 
 	if len(defaultHandlers.NoMethod) > 0 {
@@ -189,8 +261,8 @@ func (r *Router) EnableOpenAPI() error {
 	}
 
 	infos := &openapi.Info{
-		Title:       r.Api.API.Config.Name,
-		Description: r.Api.API.Config.Description,
+		Title:       r.Api.Service.Config.Name,
+		Description: r.Api.Service.Config.Description,
 		Version:     r.Api.Version,
 	}
 
@@ -201,7 +273,7 @@ func (r *Router) EnableOpenAPI() error {
 }
 
 func (r *Router) TLSIsEnabled(tlsPort int) bool {
-	return tlsPort != 0 && r.API.Config.Api.CertPath != "" && r.API.Config.Api.KeyPath != ""
+	return tlsPort != 0 && r.Service.Config.Api.CertPath != "" && r.Service.Config.Api.KeyPath != ""
 }
 
 func (r *Router) Run(port int, opts *RouterOptions) {
@@ -212,7 +284,7 @@ func (r *Router) Run(port int, opts *RouterOptions) {
 	}
 
 	if r.TLSIsEnabled(opts.TLSPort) {
-		cert, err := tls.LoadX509KeyPair(r.API.Config.Api.CertPath, r.API.Config.Api.KeyPath)
+		cert, err := tls.LoadX509KeyPair(r.Service.Config.Api.CertPath, r.Service.Config.Api.KeyPath)
 		if err != nil {
 			log.Fatalf("failed to load server certificate and key: %v", err)
 		}
@@ -229,7 +301,7 @@ func (r *Router) Run(port int, opts *RouterOptions) {
 
 		r.tlsServer = tlsServer
 
-		slog.Info("Running with TLS certs at paths:", slog.Any("cert_path", r.API.Config.Api.CertPath), slog.Any("key_path", r.API.Config.Api.KeyPath))
+		slog.Info("Running with TLS certs at paths:", slog.Any("cert_path", r.Service.Config.Api.CertPath), slog.Any("key_path", r.Service.Config.Api.KeyPath))
 		go func() {
 			if err := tlsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 				log.Fatalf("listen: %s\n", err)

@@ -3,7 +3,7 @@ package group
 import (
 	"strings"
 
-	"github.com/adalundhe/micron/api/internal/route"
+	"github.com/adalundhe/micron/api/routing/route"
 	"github.com/gin-gonic/gin"
 	"github.com/loopfz/gadgeto/tonic"
 	"github.com/wI2L/fizz"

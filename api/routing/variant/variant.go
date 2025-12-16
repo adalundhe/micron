@@ -3,9 +3,9 @@ package variant
 import (
 	"fmt"
 
-	"github.com/adalundhe/micron/api/internal/group"
-	api "github.com/adalundhe/micron/api/internal/provider"
-	"github.com/adalundhe/micron/api/internal/route"
+	"github.com/adalundhe/micron/api/routing/group"
+	"github.com/adalundhe/micron/api/routing/route"
+	"github.com/adalundhe/micron/api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/wI2L/fizz"
 )
@@ -14,7 +14,7 @@ type Variant struct {
 	Version     string
 	VariantPath string
 	Group       *group.Group
-	API         *api.API
+	Service         *service.Service
 }
 
 func NewVariant(version string, description string) *Variant {

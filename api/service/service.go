@@ -1,4 +1,4 @@
-package provider
+package service
 
 import (
 	"fmt"
@@ -14,60 +14,60 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type APIProviders struct {
+type ServiceProviders struct {
 	AWS aws.AWSProviderFactory
 	Idp idp.IdentityProvider
 	JWS provider.JWSProvider
 	SSO provider.SSO
 }
 
-type APIStores struct {
+type ServiceStores struct {
 	Cache    *stores.Cache
 	DB       *bun.DB
 	Jobs     stores.JobStore
 	UserRepo models.UserRepository
 }
 
-type API struct {
+type Service struct {
 	Config    *config.Config
 	Env       map[string]*config.EnvironmentConfig
 	Jobs      jobs.InternalJobManager
-	Providers *APIProviders
-	Stores    *APIStores
+	Providers *ServiceProviders
+	Stores    *ServiceStores
 }
 
-func NewApi(apiEnv string) *API {
-	return &API{
-		Providers: &APIProviders{},
-		Stores:    &APIStores{},
+func NewService(apiEnv string) *Service {
+	return &Service{
+		Providers: &ServiceProviders{},
+		Stores:    &ServiceStores{},
 		Env:       map[string]*config.EnvironmentConfig{},
 	}
 }
 
-func (a *API) SetConfig(cfg *config.Config) {
+func (a *Service) SetConfig(cfg *config.Config) {
 	a.Config = cfg
 }
 
-func (a *API) SetProviders(providers *APIProviders) {
+func (a *Service) SetProviders(providers *ServiceProviders) {
 	a.Providers = providers
 }
 
-func (a *API) SetStores(stores *APIStores) {
+func (a *Service) SetStores(stores *ServiceStores) {
 	a.Stores = stores
 }
 
-func (a *API) SetEnvironment(config map[string]*config.EnvironmentConfig) {
+func (a *Service) SetEnvironment(config map[string]*config.EnvironmentConfig) {
 
 	for key, value := range config {
 		a.Env[key] = value
 	}
 }
 
-func (a *API) SetJobManager(manager jobs.InternalJobManager) {
+func (a *Service) SetJobManager(manager jobs.InternalJobManager) {
 	a.Jobs = manager
 }
 
-func (a *API) GetUserFromContext(ctx *gin.Context) (*models.User, error) {
+func (a *Service) GetUserFromContext(ctx *gin.Context) (*models.User, error) {
 	user, ok := ctx.Get("user")
 	if !ok {
 		return nil, fmt.Errorf("user not found in context")

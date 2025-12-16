@@ -1,8 +1,8 @@
 package service
 
 import (
-	"github.com/adalundhe/micron/api/internal/group"
-	"github.com/adalundhe/micron/api/internal/route"
+	"github.com/adalundhe/micron/api/routing/group"
+	"github.com/adalundhe/micron/api/routing/route"
 	"github.com/gin-gonic/gin"
 )
 

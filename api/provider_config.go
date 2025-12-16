@@ -9,7 +9,7 @@ import (
 	"github.com/casbin/casbin/v2"
 )
 
-type OverrideProviders struct {
+type overrideProviders struct {
 	IDP  idp.IdentityProvider // For overriding the entire IDP shim
 	AWS  aws.AWSProviderFactory
 	JWS  provider.JWSProvider
@@ -17,12 +17,12 @@ type OverrideProviders struct {
 	SSO  provider.SSO
 }
 
-type ProviderConfig struct {
+type providerConfig struct {
 	disabledProviders []string
-	Overrides         *OverrideProviders
+	Overrides         *overrideProviders
 }
 
-func (p *ProviderConfig) IsEnabled(providerName string) bool {
+func (p *providerConfig) IsEnabled(providerName string) bool {
 
 	for _, disabledProvider := range p.disabledProviders {
 		if strings.EqualFold(providerName, disabledProvider) {
@@ -34,13 +34,13 @@ func (p *ProviderConfig) IsEnabled(providerName string) bool {
 
 }
 
-func (p *ProviderConfig) AddDisabledProviders(providerNames []string) {
+func (p *providerConfig) AddDisabledProviders(providerNames []string) {
 	for _, providerName := range providerNames {
 		p.appendProviderIfNotExists(providerName)
 	}
 }
 
-func (p *ProviderConfig) appendProviderIfNotExists(providerName string) {
+func (p *providerConfig) appendProviderIfNotExists(providerName string) {
 
 	for _, disabledProvider := range p.disabledProviders {
 		if strings.EqualFold(providerName, disabledProvider) {
@@ -52,7 +52,7 @@ func (p *ProviderConfig) appendProviderIfNotExists(providerName string) {
 
 }
 
-func CreateProviderConfig(providerNames []string) *ProviderConfig {
+func createProviderConfig(providerNames []string) *providerConfig {
 
 	loweredProviderNames := []string{}
 
@@ -63,9 +63,9 @@ func CreateProviderConfig(providerNames []string) *ProviderConfig {
 		)
 	}
 
-	return &ProviderConfig{
+	return &providerConfig{
 		disabledProviders: loweredProviderNames,
-		Overrides:         &OverrideProviders{},
+		Overrides:         &overrideProviders{},
 	}
 
 }
