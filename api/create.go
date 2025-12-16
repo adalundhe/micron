@@ -1,0 +1,471 @@
+package api
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"log/slog"
+	"net/http"
+	"os"
+	"path"
+	"strings"
+	"sync"
+
+	"github.com/adalundhe/micron/api/auth"
+	api "github.com/adalundhe/micron/api/internal/provider"
+	"github.com/adalundhe/micron/api/internal/route"
+	"github.com/adalundhe/micron/api/internal/router"
+	"github.com/adalundhe/micron/api/routes/service"
+	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/internal/otel"
+	"github.com/adalundhe/micron/internal/provider"
+	"github.com/adalundhe/micron/internal/provider/aws"
+	"github.com/adalundhe/micron/internal/provider/idp"
+	"github.com/adalundhe/micron/internal/provider/jobs"
+	"github.com/adalundhe/micron/internal/stores"
+	"github.com/casbin/casbin/v2"
+	"github.com/gin-gonic/gin"
+	"github.com/spf13/cobra"
+	"github.com/uptrace/bun"
+)
+
+type App struct {
+	Name              string
+	Description       string
+	Version           string
+	Port              int
+	TLSPort           int
+	HealthCheckPort   int
+	ConfigPath        string
+	ModelPath         string
+	PolicyPath        string
+	LogLevel          string
+	DisabledProviders string
+	IDPFactory        func(ctx context.Context, cfg *config.Config, cache stores.Cache, providers *ProviderConfig, awsProviderFactory aws.AWSProviderFactory) (idp.IdentityProvider, error)
+	IDPEnabled        bool
+	Build             func(ctx context.Context, router *router.Router, api *api.API, cfg *config.Config) error
+}
+
+func loadAppDefaults(app *App) (*App, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+
+	if app.Build == nil {
+		log.Fatalf("Err. - Build function required")
+	}
+
+	if app.ConfigPath == "" {
+		app.ConfigPath = path.Join(cwd, "config.yml")
+	}
+
+	if app.HealthCheckPort == 0 {
+		app.HealthCheckPort = 9080
+	}
+
+	if app.IDPEnabled && app.IDPFactory == nil {
+		log.Fatalf("Err. - IDP is enabled and IDP Factory not specified but required")
+	}
+
+	if app.LogLevel == "" {
+		app.LogLevel = "info"
+	}
+
+	if app.ModelPath == "" {
+		app.ModelPath = path.Join(cwd, "model.conf")
+	}
+
+	if app.PolicyPath == "" {
+		app.PolicyPath = path.Join(cwd, "policy.csv")
+	}
+
+	if app.Port == 0 {
+		app.Port = 8080
+	}
+
+	if app.TLSPort == 0 {
+		app.TLSPort = 8443
+	}
+
+	return app, nil
+}
+
+func loadConfig(app *App) (*config.Config, error) {
+	configPath := app.ConfigPath
+	if configPath == "" {
+		configPath = os.Getenv("CONFIG_PATH")
+
+	}
+
+	cfg, err := config.LoadConfigFromPath(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return cfg, nil
+}
+
+func createCache(
+	ctx context.Context,
+	cfg *config.Config,
+	awsProviderFactory aws.AWSProviderFactory,
+) (stores.Cache, error) {
+
+	var cache stores.Cache
+	var err error
+
+	if awsProviderFactory == nil {
+		slog.Info("Creating cache without AWS provider")
+		cache, err = stores.NewCache(
+			ctx,
+			*cfg.Cache,
+		)
+	} else {
+		slog.Info("Creating cache with AWS provider")
+		cache, err = stores.NewCache(
+			ctx,
+			*cfg.Cache,
+			func(rco *provider.RedisConfigOpt) {
+				rco.AWSProviderFactory = awsProviderFactory
+			},
+		)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return cache, err
+}
+
+func createDb(databaseConfig *config.DatabaseConfig) (*bun.DB, error) {
+	dbConn, err := stores.NewDB(
+		databaseConfig.Type,
+		databaseConfig.DSN,
+		databaseConfig.Username,
+		databaseConfig.Password,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return dbConn, nil
+}
+
+func CreateEnforcer(
+	app *App,
+	casbinConfig *config.CasbinConfig,
+	idpProvider idp.IdentityProvider,
+) (*casbin.Enforcer, error) {
+	modelFilepath := app.ModelPath
+	if modelFilepath == "" {
+		modelFilepath = os.Getenv("AUTH_MODEL_PATH")
+	}
+
+	policyFilepath := app.PolicyPath
+	if policyFilepath == "" {
+		policyFilepath = os.Getenv("AUTH_POLICY_PATH")
+	}
+
+	enforcer, err := auth.Create(
+		modelFilepath,
+		policyFilepath,
+		casbinConfig,
+		idpProvider,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return enforcer, nil
+}
+
+func setupApi(
+	ctx context.Context,
+	cfg *config.Config,
+	apiService *api.API,
+	providers *ProviderConfig,
+	app *App,
+) (*router.Router, error) {
+
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	if app.Name == "" {
+		app.Name = cfg.Name
+	}
+
+	if app.Description == "" {
+		app.Description = cfg.Description
+	}
+
+	if app.Version == "" {
+		app.Version = cfg.Version
+	}
+
+	providers.AddDisabledProviders(cfg.Providers.DisabledProviders)
+
+	err := otel.SetupOTelSDK(ctx, config.NewBuildInfo(app.Name, app.Version))
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup opentelemetry: %w", err)
+	}
+
+	dbConn, err := createDb(cfg.Database)
+	if err != nil {
+		return nil, err
+	}
+
+	auth.DB = dbConn
+
+	awsProviderFactory := providers.Overrides.AWS
+
+	if providers.Overrides.AWS == nil && providers.IsEnabled("AWS") {
+		slog.Info("AWS provider enabled")
+		awsProviderFactory = aws.NewAwsProviderFactory(
+			ctx,
+			cfg.Providers.Aws,
+		)
+	}
+
+	cache, err := createCache(ctx, cfg, awsProviderFactory)
+	if err != nil {
+		return nil, err
+	}
+
+	dbUserRepo := stores.NewDbUserRepository(dbConn)
+	jobStore := stores.NewJobStore(dbConn)
+
+	apiService.SetStores(&api.APIStores{
+		Cache:    &cache,
+		DB:       dbConn,
+		Jobs:     jobStore,
+		UserRepo: dbUserRepo,
+	})
+
+	var idpProvider idp.IdentityProvider
+	if app.IDPEnabled {
+		idpProvider, err = app.IDPFactory(ctx, cfg, cache, providers, awsProviderFactory)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the IDP provider in auth package
+	auth.Idp = idpProvider
+
+	jwsProvider := providers.Overrides.JWS
+	if providers.Overrides.JWS == nil && providers.IsEnabled("jws") {
+		slog.Info("JWS provider enabled")
+		jwsProvider, err = provider.NewJWSProviderFromEnvironments(cfg.DeployEnvs)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	ssoProvider := providers.Overrides.SSO
+	if providers.Overrides.SSO == nil && providers.IsEnabled("sso") {
+		ssoProvider, err = provider.NewSSOProvider(cfg.Providers.SSO, cfg.Api, &provider.SSOOpts{})
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if ssoProvider == nil {
+		auth.SSOEnabled = false
+	}
+
+	apiService.SetProviders(&api.APIProviders{
+		AWS: awsProviderFactory,
+		Idp: idpProvider,
+		JWS: jwsProvider,
+		SSO: ssoProvider,
+	})
+
+	expandedEnvs, err := cfg.ExpandDeploymentEnvs(http.DefaultClient)
+	if err != nil {
+		return nil, err
+	}
+
+	apiService.SetEnvironment(expandedEnvs)
+	apiService.SetConfig(cfg)
+
+	jobManager := jobs.NewInternalJobManager(ctx, cache.GetRedisClient(), jobStore)
+	apiService.SetJobManager(jobManager)
+
+	enforcer := providers.Overrides.Auth
+	auth.AuthEnabled = providers.IsEnabled("auth")
+	if providers.Overrides.Auth == nil && auth.AuthEnabled {
+		enforcer, err = CreateEnforcer(app, cfg.Casbin, idpProvider)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if !auth.AuthEnabled {
+		slog.Warn("Warning - auth is disabled - this should be done for debugging or development purposes only!")
+	}
+
+	auth.Enforcer = enforcer
+
+	router, err := router.NewRouter("/api", apiService)
+	if err != nil {
+		return nil, err
+	}
+
+	router.SetNoMethod()
+	router.SetDefaults(service.CreateDefaultHandlers())
+
+	if err := app.Build(
+		ctx,
+		router,
+		apiService,
+		cfg,
+	); err != nil {
+		return nil, err
+	}
+
+	err = router.EnableOpenAPI()
+	if err != nil {
+		return nil, err
+	}
+
+	router.Build()
+
+	return router, nil
+}
+
+func createHealthCheckApi(api *api.API) (*router.Router, error) {
+	healthCheckApi, err := router.NewRouter("/", api)
+	if err != nil {
+		return nil, err
+	}
+
+	healthCheckApi.AddRoute(
+		"/health",
+		"GET",
+		route.RouteConfig{
+			Endpoint: func(c *gin.Context) (string, error) {
+				return "OK", nil
+			},
+			StatusCode: 200,
+		},
+	)
+
+	healthCheckApi.SetNoMethod()
+	healthCheckApi.SetDefaults(service.CreateDefaultHandlers())
+
+	return healthCheckApi, nil
+
+}
+
+func runServers(
+	api *router.Router,
+	healthCheckApi *router.Router,
+) {
+	var wg sync.WaitGroup
+
+	// This has to be equal to the number of servers
+	// or we get a negative wait counter violation
+	wg.Add(2)
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		defer wg.Done()
+		api.Wait()
+		errChan <- api.Shutdown(10)
+	}()
+
+	go func() {
+		defer wg.Done()
+		healthCheckApi.Wait()
+		errChan <- healthCheckApi.Shutdown(10)
+	}()
+
+	go func() {
+		wg.Wait()
+		close(errChan)
+	}()
+
+	err := <-errChan
+	if err != nil {
+		slog.Error("API encountered error starting", slog.String("error", err.Error()))
+	}
+
+	slog.Info("API shutdown complete")
+}
+
+func Create(app *App) *cobra.Command {
+
+	app, err := loadAppDefaults(app)
+	if err != nil {
+		log.Fatalf("Encountered error - %s - initializing app defaults", err.Error())
+	}
+
+	runCmd := &cobra.Command{
+		Use:   "run",
+		Short: "Run the API server",
+		Long: fmt.Sprintf(
+			`Starts and runs the API on the provided or default
+		port (%d).`,
+			app.Port,
+		),
+		Run: func(cmd *cobra.Command, args []string) {
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			cfg, err := loadConfig(app)
+			if err != nil {
+				log.Fatalf("error loading config - %s", err)
+			}
+
+			apiService := api.NewApi(cfg.Api.Env)
+			srv, err := setupApi(
+				ctx,
+				cfg,
+				apiService,
+				CreateProviderConfig(
+					strings.Split(app.DisabledProviders, ","),
+				),
+				app,
+			)
+
+			if err != nil {
+				log.Fatalf("encountered error - %s", err)
+			}
+
+			healthCheckServer, err := createHealthCheckApi(srv.API)
+			if err != nil {
+				log.Fatalf("encountered error starting healthcheck API - %s", err)
+			}
+
+			srv.Run(app.Port, &router.RouterOptions{
+				TLSPort: app.TLSPort,
+			})
+
+			healthCheckServer.Run(app.HealthCheckPort, &router.RouterOptions{})
+
+			runServers(srv, healthCheckServer)
+		},
+	}
+
+	runCmd.Flags().IntVarP(&app.Port, "port", "p", app.Port, "Set server port")
+	runCmd.Flags().IntVarP(&app.TLSPort, "tls-port", "t", app.TLSPort, "Set server port")
+	runCmd.Flags().IntVarP(&app.HealthCheckPort, "check-port", "c", app.HealthCheckPort, "Set server port")
+	runCmd.Flags().StringVarP(&app.ConfigPath, "config", "C", "config.yml", "Path to the config.yaml")
+	runCmd.Flags().StringVarP(&app.ModelPath, "model", "M", "model.conf", "Path to the Casbin model.conf")
+	runCmd.Flags().StringVarP(&app.PolicyPath, "policy", "P", "policy.csv", "Path to the Casbin policy.csv")
+	runCmd.Flags().StringVarP(&app.DisabledProviders, "disable", "d", "", "A comma-delimited list of providers to disable")
+	runCmd.Flags().StringVarP(&app.LogLevel, "log-level", "l", "info", "Set server log level")
+	runCmd.Flags().StringVarP(&app.Version, "version", "v", "v1", "Set the API version")
+
+	return runCmd
+}
