@@ -1,4 +1,4 @@
-package router
+package routes
 
 import (
 	"context"
@@ -13,11 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	defaults "github.com/adalundhe/micron/api/routes/service"
-	"github.com/adalundhe/micron/api/routing/group"
-	"github.com/adalundhe/micron/api/routing/route"
-	"github.com/adalundhe/micron/api/routing/variant"
-	"github.com/adalundhe/micron/api/service"
+	"github.com/adalundhe/micron/service"
 	"github.com/gin-gonic/gin"
 	"github.com/loopfz/gadgeto/tonic"
 	swagger "github.com/num30/gin-swagger-ui"
@@ -27,7 +23,7 @@ import (
 
 type Router struct {
 	BaseUrl     string
-	Api         *variant.Variant
+	Api         *Variant
 	Engine      *gin.Engine
 	Spec        *fizz.Fizz
 	Service      *service.Service
@@ -51,14 +47,14 @@ type RouteConfig struct {
 
 type GroupConfig struct {
 	Description string
-	Groups      []*group.Group
-	Routes      []*route.Route
+	Groups      []*Group
+	Routes      []*Route
 	Middleware  []gin.HandlerFunc
 }
 
 type Routes struct {
-	Groups []*group.Group
-	Endpoints []*route.Route
+	Groups []*Group
+	Endpoints []*Route
 	Middleware []gin.HandlerFunc
 }
 
@@ -105,13 +101,13 @@ func (r *Router) CreateRoute(
 	path string,
 	method string,
 	config RouteConfig,
-) *route.Route {
+) *Route {
 
 
-	return route.CreateRoute(
+	return CreateRoute(
 		path,
 		method,
-		route.RouteConfig{
+		RouteConfig{
 			Endpoint:   config.Endpoint,
 			Spec:       config.Spec,
 			Middleware: config.Middleware,
@@ -124,10 +120,10 @@ func (r *Router) CreateRoute(
 func (r *Router) CreateGroup(
 	path string,
 	config GroupConfig,
-) *group.Group {
-	return  group.CreateGroup(
+) *Group {
+	return  CreateGroup(
 		path,
-		group.GroupConfig{
+		GroupConfig{
 			Description: config.Description,
 			Groups:      config.Groups,
 			Middleware:  config.Middleware,
@@ -140,8 +136,8 @@ func (r *Router) AddVariant(
 	name string,
 	description string,
 	routes *Routes,
-) *variant.Variant {
-	newVariant := variant.NewVariant(name, description)
+) *Variant {
+	newVariant := NewVariant(name, description)
 
 	variantPath := fmt.Sprintf("/%s", newVariant.Version)
 	if r.BaseUrl != "" && r.BaseUrl != "/" {
@@ -172,13 +168,13 @@ func (r *Router) AddVariant(
 func (r *Router) AddRoute(
 	path string,
 	method string,
-	config route.RouteConfig,
-) *route.Route {
+	config RouteConfig,
+) *Route {
 
-	newRoute := route.CreateRoute(
+	newRoute := CreateRoute(
 		path,
 		method,
-		route.RouteConfig{
+		RouteConfig{
 			Endpoint:   config.Endpoint,
 			Spec:       config.Spec,
 			Middleware: config.Middleware,
@@ -195,12 +191,12 @@ func (r *Router) AddRoute(
 
 func (r *Router) AddGroup(
 	path string,
-	config group.GroupConfig,
-) *group.Group {
+	config GroupConfig,
+) *Group {
 
-	group := group.CreateGroup(
+	group := CreateGroup(
 		path,
-		group.GroupConfig{
+		GroupConfig{
 			Description: config.Description,
 			Groups:      config.Groups,
 			Middleware:  config.Middleware,
@@ -213,15 +209,15 @@ func (r *Router) AddGroup(
 	return group
 }
 
-func (r *Router) AddRoutes(routes ...*route.Route) {
+func (r *Router) AddRoutes(routes ...*Route) {
 	for _, route := range routes {
 		r.addRouteToRouter(route)
 	}
 }
 
-func (r *Router) AddGroups(groups ...*group.Group) {
+func (r *Router) AddGroups(groups ...*Group) {
 	for _, subgroup := range groups {
-		r.addGroupToRouter(&group.Group{
+		r.addGroupToRouter(&Group{
 			Name:        subgroup.Name,
 			Path:        fmt.Sprintf("%s/%s", r.BaseUrl, subgroup.Path),
 			Description: subgroup.Description,
@@ -232,7 +228,7 @@ func (r *Router) AddGroups(groups ...*group.Group) {
 	}
 }
 
-func (r *Router) SetDefaults(defaultHandlers defaults.ServiceDefaults) {
+func (r *Router) SetDefaults(defaultHandlers ServiceDefaults) {
 	r.Engine.NoRoute(defaultHandlers.NoRoute...)
 
 	if len(defaultHandlers.NoMethod) > 0 {
@@ -379,7 +375,7 @@ func (r *Router) shutDownTLSServer(ctx context.Context) error {
 	return nil
 }
 
-func (r *Router) addGroupToRouter(group *group.Group) {
+func (r *Router) addGroupToRouter(group *Group) {
 
 	newGroup := r.Spec.Group(group.Path, group.Name, group.Description)
 
@@ -396,7 +392,7 @@ func (r *Router) addGroupToRouter(group *group.Group) {
 	}
 }
 
-func (r *Router) addRouteToRouter(route *route.Route) {
+func (r *Router) addRouteToRouter(route *Route) {
 	handlers := []gin.HandlerFunc{}
 
 	handlers = append(handlers, route.Middleware...)

@@ -1,4 +1,4 @@
-package api
+package main
 
 import (
 	"context"
@@ -11,10 +11,6 @@ import (
 	"strings"
 	"sync"
 
-	defaults "github.com/adalundhe/micron/api/routes/service"
-	"github.com/adalundhe/micron/api/routing/route"
-	"github.com/adalundhe/micron/api/routing/router"
-	"github.com/adalundhe/micron/api/service"
 	"github.com/adalundhe/micron/internal/auth"
 	"github.com/adalundhe/micron/internal/config"
 	"github.com/adalundhe/micron/internal/otel"
@@ -23,6 +19,8 @@ import (
 	"github.com/adalundhe/micron/internal/provider/idp"
 	"github.com/adalundhe/micron/internal/provider/jobs"
 	"github.com/adalundhe/micron/internal/stores"
+	"github.com/adalundhe/micron/routes"
+	"github.com/adalundhe/micron/service"
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cobra"
@@ -48,7 +46,7 @@ type App struct {
 	EnabledProviders string
 	IDPFactory        func(ctx context.Context, cfg *config.Config, cache stores.Cache, providers *providerConfig, awsProviderFactory aws.AWSProviderFactory) (idp.IdentityProvider, error)
 	IDPEnabled        bool
-	Build             func(ctx context.Context, routes *router.Router, api *service.Service, cfg *config.Config) (*router.Router, error)
+	Build             func(ctx context.Context, routes *routes.Router, api *service.Service, cfg *config.Config) (*routes.Router, error)
 	cfg *config.Config
 	runCmd *cobra.Command
 }
@@ -196,7 +194,7 @@ func setupApi(
 	apiService *service.Service,
 	providers *providerConfig,
 	app *App,
-) (*router.Router, error) {
+) (*routes.Router, error) {
 
 	if app.Name == "" {
 		app.Name = cfg.Name
@@ -317,13 +315,13 @@ func setupApi(
 
 	auth.Enforcer = enforcer
 
-	router, err := router.NewRouter("/api", apiService)
+	router, err := routes.NewRouter("/api", apiService)
 	if err != nil {
 		return nil, err
 	}
 
 	router.SetNoMethod()
-	router.SetDefaults(defaults.CreateDefaultHandlers())
+	router.SetDefaults(routes.CreateDefaultHandlers())
 
 	if router, err = app.Build(
 		ctx,
@@ -344,8 +342,8 @@ func setupApi(
 	return router, nil
 }
 
-func createHealthCheckApi(api *service.Service) (*router.Router, error) {
-	healthCheckApi, err := router.NewRouter("/", api)
+func createHealthCheckApi(api *service.Service) (*routes.Router, error) {
+	healthCheckApi, err := routes.NewRouter("/", api)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +351,7 @@ func createHealthCheckApi(api *service.Service) (*router.Router, error) {
 	healthCheckApi.AddRoute(
 		"/health",
 		"GET",
-		route.RouteConfig{
+		routes.RouteConfig{
 			Endpoint: func(c *gin.Context) (string, error) {
 				return "OK", nil
 			},
@@ -362,15 +360,15 @@ func createHealthCheckApi(api *service.Service) (*router.Router, error) {
 	)
 
 	healthCheckApi.SetNoMethod()
-	healthCheckApi.SetDefaults(defaults.CreateDefaultHandlers())
+	healthCheckApi.SetDefaults(routes.CreateDefaultHandlers())
 
 	return healthCheckApi, nil
 
 }
 
 func runServers(
-	api *router.Router,
-	healthCheckApi *router.Router,
+	api *routes.Router,
+	healthCheckApi *routes.Router,
 ) {
 	var wg sync.WaitGroup
 
@@ -461,11 +459,11 @@ func Create(app *App) (*App, error) {
 				log.Fatalf("encountered error starting healthcheck API - %s", err)
 			}
 
-			srv.Run(app.Port, &router.RouterOptions{
+			srv.Run(app.Port, &routes.RouterOptions{
 				TLSPort: app.TLSPort,
 			})
 
-			healthCheckServer.Run(app.HealthCheckPort, &router.RouterOptions{})
+			healthCheckServer.Run(app.HealthCheckPort, &routes.RouterOptions{})
 
 			runServers(srv, healthCheckServer)
 		},

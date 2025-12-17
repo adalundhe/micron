@@ -1,4 +1,4 @@
-package route
+package routes
 
 import (
 	"github.com/gin-gonic/gin"
@@ -15,13 +15,6 @@ type Route struct {
 	StatusCode int
 }
 
-type RouteConfig struct {
-	Endpoint   interface{}
-	Spec       []fizz.OperationOption
-	Middleware []gin.HandlerFunc
-	RawHandler gin.HandlerFunc
-	StatusCode int
-}
 
 func CreateRoute(
 	path string,

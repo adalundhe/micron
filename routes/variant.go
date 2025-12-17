@@ -1,11 +1,9 @@
-package variant
+package routes
 
 import (
 	"fmt"
 
-	"github.com/adalundhe/micron/api/routing/group"
-	"github.com/adalundhe/micron/api/routing/route"
-	"github.com/adalundhe/micron/api/service"
+	"github.com/adalundhe/micron/service"
 	"github.com/gin-gonic/gin"
 	"github.com/wI2L/fizz"
 )
@@ -13,7 +11,7 @@ import (
 type Variant struct {
 	Version     string
 	VariantPath string
-	Group       *group.Group
+	Group       *Group
 	Service         *service.Service
 }
 
@@ -22,12 +20,12 @@ func NewVariant(version string, description string) *Variant {
 	return &Variant{
 		Version:     version,
 		VariantPath: variantPath,
-		Group: group.CreateGroup(
+		Group: CreateGroup(
 			variantPath,
-			group.GroupConfig{
+			GroupConfig{
 				Description: description,
-				Routes: []*route.Route{},
-				Groups: []*group.Group{},
+				Routes: []*Route{},
+				Groups: []*Group{},
 				Middleware: []gin.HandlerFunc{},
 			}),
 	}
@@ -53,10 +51,10 @@ func (v *Variant) AddMiddleware(middleware ...gin.HandlerFunc) {
 	v.Group.AddMiddleware(middleware...)
 }
 
-func (v *Variant) AddRoutes(routes ...*route.Route) []*route.Route {
+func (v *Variant) AddRoutes(routes ...*Route) []*Route {
 	return v.Group.AddRoutes(routes...)
 }
 
-func (v *Variant) AddGroups(groups ...*group.Group) []*group.Group {
+func (v *Variant) AddGroups(groups ...*Group) []*Group {
 	return v.Group.AddGroups(groups...)
 }

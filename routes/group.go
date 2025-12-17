@@ -1,10 +1,9 @@
-package group
+package routes
 
 import (
 	"log/slog"
 	"strings"
 
-	"github.com/adalundhe/micron/api/routing/route"
 	"github.com/gin-gonic/gin"
 	"github.com/loopfz/gadgeto/tonic"
 	"github.com/wI2L/fizz"
@@ -15,17 +14,11 @@ type Group struct {
 	Path        string
 	Description string
 	Groups      []*Group
-	Routes      []*route.Route
+	Routes      []*Route
 	Middleware  []gin.HandlerFunc
 	RawGroup    *gin.HandlerFunc
 }
 
-type GroupConfig struct {
-	Description string
-	Groups      []*Group
-	Routes      []*route.Route
-	Middleware  []gin.HandlerFunc
-}
 
 func CreateGroup(
 	path string,
@@ -101,13 +94,13 @@ func (g *Group) AddGroup(
 	return subgroup
 }
 
-func (g *Group) AddRoutes(routes ...*route.Route) []*route.Route {
+func (g *Group) AddRoutes(routes ...*Route) []*Route {
 
 	for _, newRoute := range routes {
 		g.AddRoute(
 			newRoute.Path,
 			newRoute.Method,
-			route.RouteConfig{
+			RouteConfig{
 				Endpoint:   newRoute.Endpoint,
 				Spec:       newRoute.Spec,
 				Middleware: newRoute.Middleware,
@@ -123,8 +116,8 @@ func (g *Group) AddRoutes(routes ...*route.Route) []*route.Route {
 func (g *Group) AddRoute(
 	path string,
 	method string,
-	config route.RouteConfig,
-) *route.Route {
+	config RouteConfig,
+) *Route {
 
 	middleware := []gin.HandlerFunc{}
 
@@ -136,10 +129,10 @@ func (g *Group) AddRoute(
 		middleware = append(middleware, config.Middleware...)
 	}
 
-	newRoute := route.CreateRoute(
+	newRoute := CreateRoute(
 		path,
 		method,
-		route.RouteConfig{
+		RouteConfig{
 			Spec:       config.Spec,
 			Endpoint:   config.Endpoint,
 			Middleware: middleware,
@@ -205,7 +198,7 @@ func (g *Group) AddGroupToGroup(group *fizz.RouterGroup) {
 	}
 }
 
-func (g *Group) AddRouteToGroup(group *fizz.RouterGroup, route *route.Route) {
+func (g *Group) AddRouteToGroup(group *fizz.RouterGroup, route *Route) {
 	slog.Info("GOT:", slog.Any("group", group), slog.Any("route", route.StatusCode))
 	handlers := []gin.HandlerFunc{}
 	handlers = append(handlers, route.Middleware...)

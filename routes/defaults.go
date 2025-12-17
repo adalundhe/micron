@@ -1,8 +1,6 @@
-package service
+package routes
 
 import (
-	"github.com/adalundhe/micron/api/routing/group"
-	"github.com/adalundhe/micron/api/routing/route"
 	"github.com/gin-gonic/gin"
 )
 
@@ -36,18 +34,18 @@ func Status(c *gin.Context) (*StatusResponse, error) {
 	}, nil
 }
 
-func CreateServiceRoutes() *group.Group {
+func CreateServiceRoutes() *Group {
 
-	serviceRoutes := group.CreateGroup(
+	serviceRoutes := CreateGroup(
 		"/service",
-		group.GroupConfig{},
+		GroupConfig{},
 	)
 
 	serviceRoutes.AddRoutes(
-		route.CreateRoute(
+		CreateRoute(
 			"/status",
 			"GET",
-			route.RouteConfig{
+			RouteConfig{
 				Endpoint:   Status,
 				StatusCode: 200,
 			},
