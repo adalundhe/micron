@@ -15,6 +15,7 @@ import (
 	"github.com/adalundhe/saml-gin/samlsp"
 	"github.com/gin-gonic/gin"
 	"github.com/go-jose/go-jose/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/juju/errors"
 )
 
@@ -40,14 +41,13 @@ type SSOTokenClaims struct {
 	Attrs     SSOTokenAttrClaims `json:"attr"`
 }
 
-type SSORedemptionResponse struct {
-	Attributes    map[string]string `json:"attributes"`
-	Email         string            `json:"email"`
-	OrgExternalId string            `json:"org_external_id"`
-	OrgId         string            `json:"org_id"`
-	FlowId        string            `json:"flow_id"`
-	State         string            `json:"state"`
+
+type SSOClaimsConstraint interface {
+	jwt.Claims
 }
+
+type SSOClaimsBuilder[T SSOClaimsConstraint] func(data map[string]interface{}, expiresAt, issuedAt, notBefore time.Time) T
+
 
 func loadKeyPair(
 	config *config.SSOConfig,

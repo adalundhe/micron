@@ -11,11 +11,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/adalundhe/micron/api/auth"
 	defaults "github.com/adalundhe/micron/api/routes/service"
 	"github.com/adalundhe/micron/api/routing/route"
 	"github.com/adalundhe/micron/api/routing/router"
 	"github.com/adalundhe/micron/api/service"
+	"github.com/adalundhe/micron/internal/auth"
 	"github.com/adalundhe/micron/internal/config"
 	"github.com/adalundhe/micron/internal/otel"
 	"github.com/adalundhe/micron/internal/provider"

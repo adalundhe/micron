@@ -5,7 +5,6 @@ import (
 
 	"github.com/casbin/casbin/v2"
 
-	"github.com/adalundhe/micron/internal/authz"
 	"github.com/adalundhe/micron/internal/config"
 	"github.com/adalundhe/micron/internal/provider/idp"
 	"github.com/casbin/casbin/v2/model"
@@ -48,7 +47,7 @@ func Create(
 	}
 
 	// Set custom role manager
-	enforcer.SetRoleManager(authz.NewRoleManager(idpProvider, casbinConfig.ValidEmailDomains, Idp.CheckUserActive))
+	enforcer.SetRoleManager(NewRoleManager(idpProvider, casbinConfig.ValidEmailDomains, Idp.CheckUserActive))
 
 	// Load policy
 	if err := enforcer.LoadPolicy(); err != nil {
