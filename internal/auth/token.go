@@ -8,7 +8,7 @@ import (
 	"time"
 
 	adaJwt "github.com/adalundhe/gin-jwt-tonic"
-	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/config"
 	"github.com/adalundhe/micron/internal/provider/idp"
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"

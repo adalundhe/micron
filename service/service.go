@@ -3,7 +3,7 @@ package service
 import (
 	"fmt"
 
-	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/config"
 	"github.com/adalundhe/micron/internal/models"
 	"github.com/adalundhe/micron/internal/provider"
 	"github.com/adalundhe/micron/internal/provider/aws"

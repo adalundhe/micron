@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/config"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"

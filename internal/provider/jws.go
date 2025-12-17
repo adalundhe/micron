@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/config"
 	"github.com/go-jose/go-jose/v4"
 )
 

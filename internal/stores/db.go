@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/config"
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/dialect/sqlitedialect"

@@ -5,7 +5,7 @@ import (
 
 	"github.com/casbin/casbin/v2"
 
-	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/config"
 	"github.com/adalundhe/micron/internal/provider/idp"
 	"github.com/casbin/casbin/v2/model"
 	scas "github.com/qiangmzsx/string-adapter/v2"

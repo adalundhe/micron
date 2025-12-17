@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/config"
 	"github.com/adalundhe/saml-gin"
 	"github.com/adalundhe/saml-gin/samlsp"
 	"github.com/gin-gonic/gin"

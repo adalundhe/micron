@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/adalundhe/micron/config"
 	"github.com/adalundhe/micron/internal/auth"
-	"github.com/adalundhe/micron/internal/config"
 	"github.com/adalundhe/micron/internal/otel"
 	"github.com/adalundhe/micron/internal/provider"
 	"github.com/adalundhe/micron/internal/provider/aws"

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/config"
 	"github.com/adalundhe/micron/internal/provider"
 	"github.com/redis/go-redis/v9"
 )

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/config"
 	awsprovider "github.com/adalundhe/micron/internal/provider/aws"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"

@@ -15,7 +15,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 	ddotelv1 "gopkg.in/DataDog/dd-trace-go.v1/ddtrace/opentelemetry"
 
-	"github.com/adalundhe/micron/internal/config"
+	"github.com/adalundhe/micron/config"
 )
 
 // copy from open telemtry home page

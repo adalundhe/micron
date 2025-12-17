@@ -6,8 +6,8 @@ import (
 	"time"
 
 	jwt "github.com/adalundhe/gin-jwt-tonic"
+	"github.com/adalundhe/micron/config"
 	"github.com/adalundhe/micron/internal/auth"
-	"github.com/adalundhe/micron/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/loopfz/gadgeto/tonic"
 )
