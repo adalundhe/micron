@@ -412,7 +412,7 @@ func Create(app *App) (*App, error) {
 
 	runCmd := &cobra.Command{
 		Use:   "run",
-		Short: fmt.Sprintf("Run the server"),
+		Short: "Run the server",
 		Long: fmt.Sprintf(
 			`Starts and runs the API on the provided or default
 		port (%d).`,
@@ -484,9 +484,9 @@ func Create(app *App) (*App, error) {
 	return app, nil
 }
 
-func (a *App) Run(command string, description string, altDescriptors ...string) error {
+func (a *App) Run(command string, altDescriptors ...string) error {
 
-	altDescriptor := description
+	altDescriptor := ""
 	if len(altDescriptors) > 0 {
 		altDescriptor = altDescriptors[0]
 	}
@@ -494,7 +494,7 @@ func (a *App) Run(command string, description string, altDescriptors ...string) 
 
 	rootCmd := &cobra.Command{
 		Use:   command,
-		Short: description,
+		Short: a.Description,
 		Long: altDescriptor,
 	}
 
