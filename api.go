@@ -484,7 +484,7 @@ func Create(app *App) (*App, error) {
 	return app, nil
 }
 
-func (a *App) Run(command string, altDescriptors ...string) error {
+func (a *App) Run(altDescriptors ...string) error {
 
 	altDescriptor := ""
 	if len(altDescriptors) > 0 {
@@ -493,7 +493,7 @@ func (a *App) Run(command string, altDescriptors ...string) error {
 	
 
 	rootCmd := &cobra.Command{
-		Use:   command,
+		Use:   strings.ToLower(a.Name),
 		Short: a.Description,
 		Long: altDescriptor,
 	}
