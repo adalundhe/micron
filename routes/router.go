@@ -31,6 +31,8 @@ type Router struct {
 	tlsServer   *http.Server
 	quitChannel chan os.Signal
 	Running     bool
+	Groups 		[]*Group
+	Routes 		[]*Route
 }
 
 type RouterOptions struct {
@@ -183,7 +185,7 @@ func (r *Router) AddRoute(
 		},
 	)
 
-	r.addRouteToRouter(newRoute)
+	r.Routes = append(r.Routes, newRoute)
 
 	return newRoute
 
@@ -204,7 +206,7 @@ func (r *Router) AddGroup(
 		},
 	)
 
-	r.addGroupToRouter(group)
+	r.Groups = append(r.Groups, group)
 
 	return group
 }

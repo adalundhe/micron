@@ -332,6 +332,22 @@ func setupApi(
 		return nil, err
 	}
 
+	if router.Api == nil {
+		router.Api = router.AddVariant(
+			app.Version, 
+			app.Description,
+			&routes.Routes{
+				Groups: router.Groups,
+				Endpoints: router.Routes,
+			},
+		)
+	} else {
+		
+		router.Api.AddGroups(router.Groups...)
+		router.Api.AddRoutes(router.Routes...)
+
+	}
+
 	err = router.EnableOpenAPI()
 	if err != nil {
 		return nil, err
