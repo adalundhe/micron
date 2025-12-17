@@ -46,7 +46,7 @@ type App struct {
 	EnabledProviders string
 	IDPFactory        func(ctx context.Context, cfg *config.Config, cache stores.Cache, providers *providerConfig, awsProviderFactory aws.AWSProviderFactory) (idp.IdentityProvider, error)
 	IDPEnabled        bool
-	Build             func(ctx context.Context, routes *routes.Router, api *service.Service, cfg *config.Config) (*routes.Router, error)
+	Build             func(ctx context.Context, router *routes.Router, api *service.Service, cfg *config.Config) (*routes.Router, error)
 	cfg *config.Config
 	runCmd *cobra.Command
 }
