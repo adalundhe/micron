@@ -31,7 +31,7 @@ type JWTConfig struct {
 	Secure           bool
 }
 
-type ClaimsBuilder[T ClaimsConstraint] func(data map[string]interface{}, expiresAt, issuedAt, notBefore time.Time) T
+type ClaimsBuilder[T ClaimsConstraint] func(data map[string]interface{}, expiresAt, issuedAt, notBefore time.Time) (T, error)
 type Verifier[T ClaimsConstraint] func(token jwt.Claims, claims T) (T, error)
 
 type DefaultClaims struct {
@@ -53,9 +53,15 @@ func GenerateTokens[T ClaimsConstraint](
 ) (*TokenPair, error) {
 	now := time.Now()
 	
-	accessClaims := builder(data, now.Add(config.AccessTokenTTL), now, now)
+	accessClaims, err := builder(data, now.Add(config.AccessTokenTTL), now, now)
+	if err != nil {
+		return nil, err
+	}
 	
-	refreshClaims := builder(data, now.Add(config.RefreshTokenTTL), now, now)
+	refreshClaims, err := builder(data, now.Add(config.RefreshTokenTTL), now, now)
+	if err != nil {
+		return nil, err
+	}
 	
 	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
 	accessTokenString, err := accessToken.SignedString([]byte(config.SecretKey))
