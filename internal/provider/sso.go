@@ -27,9 +27,6 @@ type SSOOpts struct {
 	CreateClaims func () auth.SSOClaims
 }
 
-
-
-
 type SSOClaimsConstraint interface {
 	jwt.Claims
 }
