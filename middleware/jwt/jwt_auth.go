@@ -28,7 +28,7 @@ type ClaimsConstraint interface {
 }
 
 type Parser[T ClaimsConstraint] func(data interface{}) (T, error)
-type ClaimsBuilder[T ClaimsConstraint] func(data map[string]interface{}, expiresAt, issuedAt, notBefore time.Time) (T, error)
+type ClaimsBuilder[T ClaimsConstraint] func(claims T, expiresAt, issuedAt, notBefore time.Time) (T, error)
 type Verifier[T ClaimsConstraint] func(ctx *gin.Context, claims T) (T, error)
 
 type JWTMiddleware[T ClaimsConstraint] struct {
@@ -48,7 +48,6 @@ type JWTMiddleware[T ClaimsConstraint] struct {
 	Parse Parser[T]
 	Verify Verifier[T]
 	Build ClaimsBuilder[T]
-	Map func(T) map[string]interface{}
 	CreateEmpty func() T
 	SignerName string
 	Algorithm string
@@ -69,16 +68,17 @@ type TokenPair struct {
 }
 
 func (mw *JWTMiddleware[T]) GenerateTokens(
-	data map[string]interface{},
+	access T,
+	refresh T,
 ) (*TokenPair, error) {
 	now := time.Now()
 	
-	accessClaims, err := mw.Build(data, now.Add(mw.AccessTokenTTL), now, now)
+	accessClaims, err := mw.Build(access, now.Add(mw.AccessTokenTTL), now, now)
 	if err != nil {
 		return nil, err
 	}
 	
-	refreshClaims, err := mw.Build(data, now.Add(mw.RefreshTokenTTL), now, now)
+	refreshClaims, err := mw.Build(refresh, now.Add(mw.RefreshTokenTTL), now, now)
 	if err != nil {
 		return nil, err
 	}
@@ -337,8 +337,7 @@ func New[T ClaimsConstraint](
 					return
 				}
 				
-				data := mw.Map(refreshClaims)
-				newTokens, tokenErr := mw.GenerateTokens(data)
+				newTokens, tokenErr := mw.GenerateTokens(accessClaims, refreshClaims)
 				if tokenErr != nil {
 					c.JSON(500, gin.H{"error": "failed to refresh token"})
 					c.Abort()
