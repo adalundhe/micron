@@ -53,8 +53,8 @@ type App struct {
 
 var DB *bun.DB
 var Cache *stores.Cache
-var Users *stores.DbUserRepository
 var Jobs stores.JobStore
+var Service *service.Service
 
 func loadAppDefaults(app *App) (*App, error) {
 	cwd, err := os.Getwd()
@@ -360,6 +360,8 @@ func setupApi(
 	if err != nil {
 		return nil, err
 	}
+
+	Service = router.Api.Service
 
 	router.Build()
 
