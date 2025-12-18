@@ -23,6 +23,7 @@ type GenericAuthHandler[T ClaimsConstraint] struct {
 	userStore  UserStore
 	builder    ClaimsBuilder[T]
 	extractData func(T) map[string]interface{}
+	verify Verifier[T]
 }
 
 type UserStore interface {
@@ -75,7 +76,7 @@ func (h *GenericAuthHandler[T]) Refresh(c *gin.Context) (string, error) {
 	}
 	
 	var claims T
-	claims, err = ValidateToken(h.config, refreshToken, claims)
+	claims, err = ValidateToken(h.config, refreshToken, claims, h.verify)
 	if err != nil {
 		return "", errors.NewUnauthorized(err, "Unauthorized request")
 	}
