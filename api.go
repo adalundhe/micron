@@ -53,6 +53,8 @@ type App struct {
 
 var DB *bun.DB
 var Cache *stores.Cache
+var Users *stores.DbUserRepository
+var Jobs stores.JobStore
 
 func loadAppDefaults(app *App) (*App, error) {
 	cwd, err := os.Getwd()
