@@ -76,7 +76,7 @@ func (h *GenericAuthHandler[T]) Refresh(c *gin.Context) (string, error) {
 	}
 	
 	var claims T
-	claims, err = ValidateToken(h.config, refreshToken, claims, h.verify)
+	claims, err = ValidateToken(c, h.config, refreshToken, claims, h.verify)
 	if err != nil {
 		return "", errors.NewUnauthorized(err, "Unauthorized request")
 	}

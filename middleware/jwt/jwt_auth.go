@@ -32,7 +32,7 @@ type JWTConfig struct {
 }
 
 type ClaimsBuilder[T ClaimsConstraint] func(data map[string]interface{}, expiresAt, issuedAt, notBefore time.Time) (T, error)
-type Verifier[T ClaimsConstraint] func(token jwt.Claims, claims T) (T, error)
+type Verifier[T ClaimsConstraint] func(ctx *gin.Context, token jwt.Claims, claims T) (T, error)
 
 type DefaultClaims struct {
 	UserID   string `json:"user_id"`
@@ -88,6 +88,7 @@ func GenerateTokens[T ClaimsConstraint](
 }
 
 func ValidateToken[T ClaimsConstraint](
+	ctx *gin.Context,
 	config JWTConfig,
 	tokenString string,
 	claimsPtr T,
@@ -109,7 +110,7 @@ func ValidateToken[T ClaimsConstraint](
 		return zero, ErrInvalidToken
 	}
 	
-	if claims, err := verifier(token.Claims, claimsPtr); err == nil && token.Valid {
+	if claims, err := verifier(ctx, token.Claims, claimsPtr); err == nil && token.Valid {
 		return claims, nil
 	}
 	
@@ -180,7 +181,7 @@ func JWTAuthMiddleware[T ClaimsConstraint](
 		}
 		
 		accessClaims := factory()
-		accessClaims, err = ValidateToken(config, accessToken, accessClaims, verifier)
+		accessClaims, err = ValidateToken(c, config, accessToken, accessClaims, verifier)
 		if err != nil {
 			if err == ErrTokenExpired {
 				refreshToken, refreshErr := GetTokenFromCookie(c, config.RefreshCookieName)
@@ -191,7 +192,7 @@ func JWTAuthMiddleware[T ClaimsConstraint](
 				}
 				
 				refreshClaims := factory()
-				refreshClaims, refreshErr = ValidateToken(config, refreshToken, refreshClaims, verifier)
+				refreshClaims, refreshErr = ValidateToken(c, config, refreshToken, refreshClaims, verifier)
 				if refreshErr != nil {
 					c.JSON(401, gin.H{"error": "refresh token invalid"})
 					c.Abort()
