@@ -51,6 +51,9 @@ type App struct {
 	runCmd *cobra.Command
 }
 
+var DB *bun.DB
+var Cache *stores.Cache
+
 func loadAppDefaults(app *App) (*App, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -239,6 +242,9 @@ func setupApi(
 
 	dbUserRepo := stores.NewDbUserRepository(dbConn)
 	jobStore := stores.NewJobStore(dbConn)
+
+	Cache = &cache
+	DB = dbConn
 
 	apiService.SetStores(&service.ServiceStores{
 		Cache:    &cache,
