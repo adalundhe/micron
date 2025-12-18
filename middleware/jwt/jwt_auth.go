@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	provider "github.com/adalundhe/micron/auth"
 	"github.com/adalundhe/micron/config"
+	"github.com/adalundhe/micron/internal/provider"
 	"github.com/gin-gonic/gin"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
