@@ -10,15 +10,17 @@ import (
 	"github.com/adalundhe/micron/internal/provider/idp"
 	"github.com/adalundhe/micron/internal/provider/jobs"
 	"github.com/adalundhe/micron/internal/stores"
+	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/uptrace/bun"
 )
 
 type ServiceProviders struct {
-	AWS aws.AWSProviderFactory
-	Idp idp.IdentityProvider
-	JWS provider.JWSProvider
-	SSO provider.SSO
+	AWS		aws.AWSProviderFactory
+	Idp		idp.IdentityProvider
+	JWS		provider.JWSProvider
+	SSO		provider.SSO
+	Casbin  *casbin.Enforcer
 }
 
 type ServiceStores struct {

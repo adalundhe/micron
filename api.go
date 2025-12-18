@@ -311,6 +311,7 @@ func setupApi(
 	auth.AuthEnabled = providers.IsEnabled("auth")
 	if providers.Overrides.Auth == nil && auth.AuthEnabled {
 		enforcer, err = createEnforcer(app, cfg.Providers.Casbin, idpProvider)
+		apiService.Providers.Casbin = enforcer
 	}
 
 	if err != nil {
