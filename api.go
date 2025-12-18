@@ -54,10 +54,6 @@ type App struct {
 	runCmd *cobra.Command
 }
 
-var DB *bun.DB
-var Cache *stores.Cache
-var Jobs stores.JobStore
-var Service *service.Service
 
 func loadAppDefaults(app *App) (*App, error) {
 	cwd, err := os.Getwd()
@@ -250,8 +246,9 @@ func setupApi(
 	stores.Users = dbUserRepo
 	jobStore := stores.NewJobStore(dbConn)
 
-	Cache = &cache
-	DB = dbConn
+	service.Cache = &cache
+	service.DB = dbConn
+	service.Jobs = jobStore
 
 	apiService.SetStores(&service.ServiceStores{
 		Cache:    &cache,
@@ -282,6 +279,8 @@ func setupApi(
 		return nil, err
 	}
 
+	auth.SSOEnabled = false
+
 	ssoProvider := providers.Overrides.SSO
 	if providers.Overrides.SSO == nil && providers.IsEnabled("sso") {
 		ssoProvider, err = provider.NewSSOProvider(cfg.Providers.SSO, cfg.Api, &provider.SSOOpts{
@@ -300,7 +299,6 @@ func setupApi(
 		AWS: awsProviderFactory,
 		Idp: idpProvider,
 		JWS: jwsProvider,
-		SSO: ssoProvider,
 	})
 
 	expandedEnvs, err := cfg.ExpandDeploymentEnvs(http.DefaultClient)
@@ -369,7 +367,7 @@ func setupApi(
 		return nil, err
 	}
 
-	Service = router.Api.Service
+	service.API = router.Api.Service
 
 	router.Build()
 

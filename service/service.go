@@ -38,6 +38,11 @@ type Service struct {
 	Stores    *ServiceStores
 }
 
+var API *Service
+var DB *bun.DB
+var Cache *stores.Cache
+var Jobs stores.JobStore
+
 func NewService(apiEnv string) *Service {
 	return &Service{
 		Providers: &ServiceProviders{},
@@ -52,6 +57,10 @@ func (a *Service) SetConfig(cfg *config.Config) {
 
 func (a *Service) SetProviders(providers *ServiceProviders) {
 	a.Providers = providers
+}
+
+func (a *Service) SetSSO(sso provider.SSO) {
+	a.Providers.SSO = sso
 }
 
 func (a *Service) SetStores(stores *ServiceStores) {
