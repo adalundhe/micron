@@ -15,6 +15,8 @@ type DbUserRepository struct {
 	db *bun.DB
 }
 
+var Users *DbUserRepository
+
 func NewDbUserRepository(db *bun.DB) *DbUserRepository {
 	return &DbUserRepository{db: db}
 }

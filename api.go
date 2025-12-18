@@ -243,6 +243,8 @@ func setupApi(
 	}
 
 	dbUserRepo := stores.NewDbUserRepository(dbConn)
+
+	stores.Users = dbUserRepo
 	jobStore := stores.NewJobStore(dbConn)
 
 	Cache = &cache

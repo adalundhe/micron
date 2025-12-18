@@ -3,12 +3,19 @@ package jwtmiddleware
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
+	"github.com/adalundhe/micron/config"
+	"github.com/adalundhe/micron/internal/provider"
 	"github.com/gin-gonic/gin"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"
+	jujuErr "github.com/juju/errors"
 )
 
 var (
@@ -20,7 +27,11 @@ type ClaimsConstraint interface {
 	jwt.Claims
 }
 
-type JWTConfig struct {
+type Parser[T ClaimsConstraint] func(data interface{}) (T, error)
+type ClaimsBuilder[T ClaimsConstraint] func(data map[string]interface{}, expiresAt, issuedAt, notBefore time.Time) (T, error)
+type Verifier[T ClaimsConstraint] func(ctx *gin.Context, claims T) (T, error)
+
+type JWTMiddleware[T ClaimsConstraint] struct {
 	SecretKey        string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL  time.Duration
@@ -29,10 +40,21 @@ type JWTConfig struct {
 	CSRFCookieName   string
 	Domain           string
 	Secure           bool
+	TokenLookup 	string
+	TokenHeadName	string
+	RefreshTokenLookup 	string
+	RefreshTokenHeadName	string
+	Parse Parser[T]
+	Verify Verifier[T]
+	Build ClaimsBuilder[T]
+	Map func(T) map[string]interface{}
+	CreateEmpty func() T
+	SignerName string
+	Algorithm string
+	Keys map[string]interface{}
+	Signer provider.JWSProvider
 }
 
-type ClaimsBuilder[T ClaimsConstraint] func(data map[string]interface{}, expiresAt, issuedAt, notBefore time.Time) (T, error)
-type Verifier[T ClaimsConstraint] func(ctx *gin.Context, token jwt.Claims, claims T) (T, error)
 
 type DefaultClaims struct {
 	UserID   string `json:"user_id"`
@@ -46,34 +68,42 @@ type TokenPair struct {
 	CSRFToken    string
 }
 
-func GenerateTokens[T ClaimsConstraint](
-	config JWTConfig,
-	builder ClaimsBuilder[T],
+func (mw *JWTMiddleware[T]) GenerateTokens(
 	data map[string]interface{},
 ) (*TokenPair, error) {
 	now := time.Now()
 	
-	accessClaims, err := builder(data, now.Add(config.AccessTokenTTL), now, now)
+	accessClaims, err := mw.Build(data, now.Add(mw.AccessTokenTTL), now, now)
 	if err != nil {
 		return nil, err
 	}
 	
-	refreshClaims, err := builder(data, now.Add(config.RefreshTokenTTL), now, now)
+	refreshClaims, err := mw.Build(data, now.Add(mw.RefreshTokenTTL), now, now)
 	if err != nil {
 		return nil, err
+	}
+
+	accessTokenPayload, err := json.Marshal(accessClaims)
+	if err != nil {
+		return  nil, err
+	}
+
+	refreshTokenPayload, err := json.Marshal(refreshClaims)
+	if err != nil {
+		return  nil, err
 	}
 	
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessClaims)
-	accessTokenString, err := accessToken.SignedString([]byte(config.SecretKey))
-	if err != nil {
-		return nil, err
-	}
 	
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims)
-	refreshTokenString, err := refreshToken.SignedString([]byte(config.SecretKey))
+	accessToken, err := mw.Signer.Sign(accessTokenPayload, mw.SignerName)
 	if err != nil {
 		return nil, err
 	}
+
+	refreshToken, err := mw.Signer.Sign(refreshTokenPayload, mw.SignerName)
+	if err != nil {
+		return nil, err
+	}
+
 	
 	csrfToken, err := generateCSRFToken()
 	if err != nil {
@@ -81,133 +111,241 @@ func GenerateTokens[T ClaimsConstraint](
 	}
 	
 	return &TokenPair{
-		AccessToken:  accessTokenString,
-		RefreshToken: refreshTokenString,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
 		CSRFToken:    csrfToken,
 	}, nil
 }
 
-func ValidateToken[T ClaimsConstraint](
-	ctx *gin.Context,
-	config JWTConfig,
-	tokenString string,
-	claimsPtr T,
-	verifier Verifier[T],
-) (T, error) {
-	var zero T
-	
-	token, err := jwt.ParseWithClaims(tokenString, claimsPtr, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, ErrInvalidToken
-		}
-		return []byte(config.SecretKey), nil
-	})
-	
+func (mw *JWTMiddleware[T]) validate(ctx *gin.Context, token string) (T, error) {
+
+	claims := mw.CreateEmpty()
+
+	payload, err := mw.Signer.Verify(token, mw.SignerName, jose.SignatureAlgorithm(mw.Algorithm))
 	if err != nil {
-		if errors.Is(err, jwt.ErrTokenExpired) {
-			return zero, ErrTokenExpired
-		}
-		return zero, ErrInvalidToken
+		return claims, err
+	}
+
+	jwtToken := jwt.New(jwt.GetSigningMethod(mw.Algorithm))
+	mapped := jwtToken.Claims.(jwt.MapClaims)
+
+
+	err = json.Unmarshal(payload, &mapped)
+	if err != nil {
+		return claims, err
 	}
 	
-	if claims, err := verifier(ctx, token.Claims, claimsPtr); err == nil && token.Valid {
-		return claims, nil
+
+	if claims, err := mw.Parse(mapped); err != nil {
+		return claims, err
 	}
-	
-	return zero, ErrInvalidToken
+
+	if claims, err := mw.Verify(ctx, claims); err != nil {
+		return claims, err
+	}
+
+	return claims, err
 }
 
-func SetAuthCookies(c *gin.Context, config JWTConfig, tokens *TokenPair) {
+
+func (mw *JWTMiddleware[T]) ExtractAndValidateRefreshToken(ctx *gin.Context) (T, error) {
+	claims := mw.CreateEmpty()
+
+	refreshToken, err := extractToken(ctx, mw.RefreshTokenHeadName, mw.RefreshTokenHeadName)
+	if err != nil {
+		return claims, err
+	}
+
+	return mw.validate(ctx, refreshToken)
+
+
+}
+
+func (mw *JWTMiddleware[T]) SetAuthCookies(c *gin.Context, tokens *TokenPair) {
 	c.SetCookie(
-		config.AccessCookieName,
+		mw.AccessCookieName,
 		tokens.AccessToken,
-		int(config.AccessTokenTTL.Seconds()),
+		int(mw.AccessTokenTTL.Seconds()),
 		"/",
-		config.Domain,
-		config.Secure,
+		mw.Domain,
+		mw.Secure,
 		true,
 	)
 	
 	c.SetCookie(
-		config.RefreshCookieName,
+		mw.RefreshCookieName,
 		tokens.RefreshToken,
-		int(config.RefreshTokenTTL.Seconds()),
+		int(mw.RefreshTokenTTL.Seconds()),
 		"/",
-		config.Domain,
-		config.Secure,
+		mw.Domain,
+		mw.Secure,
 		true,
 	)
 	
 	c.SetCookie(
-		config.CSRFCookieName,
+		mw.CSRFCookieName,
 		tokens.CSRFToken,
-		int(config.AccessTokenTTL.Seconds()),
+		int(mw.AccessTokenTTL.Seconds()),
 		"/",
-		config.Domain,
-		config.Secure,
+		mw.Domain,
+		mw.Secure,
 		false,
 	)
 }
 
-func ClearAuthCookies(c *gin.Context, config JWTConfig) {
-	c.SetCookie(config.AccessCookieName, "", -1, "/", config.Domain, config.Secure, true)
-	c.SetCookie(config.RefreshCookieName, "", -1, "/", config.Domain, config.Secure, true)
-	c.SetCookie(config.CSRFCookieName, "", -1, "/", config.Domain, config.Secure, false)
+func  (mw *JWTMiddleware[T]) ClearAuthCookies(c *gin.Context) {
+	c.SetCookie(mw.AccessCookieName, "", -1, "/", mw.Domain, mw.Secure, true)
+	c.SetCookie(mw.RefreshCookieName, "", -1, "/", mw.Domain, mw.Secure, true)
+	c.SetCookie(mw.CSRFCookieName, "", -1, "/", mw.Domain, mw.Secure, false)
 }
 
-func GetTokenFromCookie(c *gin.Context, cookieName string) (string, error) {
-	token, err := c.Cookie(cookieName)
+func (mw *JWTMiddleware[T]) GetTokenFromCookie(c *gin.Context) (string, error) {
+	token, err := c.Cookie(mw.CSRFCookieName)
 	if err != nil {
 		return "", err
 	}
 	return token, nil
 }
 
+func extractToken(ctx *gin.Context, lookup string, name string) (string, error) {
+	methods := strings.Split(lookup, ",")
+	var token string
+	var err error
+
+
+	for _, method := range methods {
+		if len(token) > 0 {
+			break
+		}
+
+		parts := strings.Split(strings.TrimSpace(method), ":")
+		k := strings.TrimSpace(parts[0])
+		v := strings.TrimSpace(parts[1])
+		switch k {
+		case "header":
+			token, err = jwtFromHeader(ctx, v, name)
+		case "query":
+			token, err = jwtFromQuery(ctx, v)
+		case "cookie":
+			token, err = jwtFromCookie(ctx, v)
+		case "param":
+			token, err = jwtFromParam(ctx, v)
+		case "form":
+			token, err = jwtFromForm(ctx, v)
+		}
+	}
+
+	if err != nil {
+		return "", err
+	}
+
+	return token, nil
+}
+
+func jwtFromHeader(c *gin.Context, key string, name string) (string, error) {
+	authHeader := c.Request.Header.Get(key)
+
+	if authHeader == "" {
+		return "", jujuErr.Unauthorized
+	}
+
+	parts := strings.SplitN(authHeader, " ", 2)
+	if !(len(parts) == 2 && parts[0] == name) {
+		return "", jujuErr.Unauthorized
+	}
+
+	return parts[1], nil
+}
+
+
+func jwtFromQuery(c *gin.Context, key string) (string, error) {
+	token := c.Query(key)
+
+	if token == "" {
+		return "", jujuErr.Unauthorized
+	}
+
+	return token, nil
+}
+
+func jwtFromCookie(c *gin.Context, key string) (string, error) {
+	cookie, _ := c.Cookie(key)
+
+	if cookie == "" {
+		return "", jujuErr.Unauthorized
+	}
+
+	return cookie, nil
+}
+
+func jwtFromParam(c *gin.Context, key string) (string, error) {
+	token := c.Param(key)
+
+	if token == "" {
+		return "", jujuErr.Unauthorized
+	}
+
+	return token, nil
+}
+
+func jwtFromForm(c *gin.Context, key string) (string, error) {
+	token := c.PostForm(key)
+
+	if token == "" {
+		return "", jujuErr.Unauthorized
+	}
+
+	return token, nil
+}
+
 type ClaimsFactory[T ClaimsConstraint] func() T
 
-func JWTAuthMiddleware[T ClaimsConstraint](
-	config JWTConfig,
-	factory ClaimsFactory[T],
-	builder ClaimsBuilder[T],
-	verifier Verifier[T],
-	extractData func(T) map[string]interface{},
+func New[T ClaimsConstraint](
+	mw JWTMiddleware[T],
 ) gin.HandlerFunc {
+
+	jwks, err := provider.NewJWSProviderFromEnvironments(config.Conf.DeployEnvs)
+	if err != nil {
+		log.Fatalf("Could not load signing keys - %s", err.Error())
+	}
+
+	mw.Signer = jwks
+
 	return func(c *gin.Context) {
-		accessToken, err := GetTokenFromCookie(c, config.AccessCookieName)
+		accessToken, err := extractToken(c, mw.TokenLookup, mw.TokenHeadName)
 		if err != nil {
 			c.JSON(401, gin.H{"error": "unauthorized"})
 			c.Abort()
 			return
 		}
-		
-		accessClaims := factory()
-		accessClaims, err = ValidateToken(c, config, accessToken, accessClaims, verifier)
+
+
+		accessClaims, err := mw.validate(c, accessToken)
 		if err != nil {
 			if err == ErrTokenExpired {
-				refreshToken, refreshErr := GetTokenFromCookie(c, config.RefreshCookieName)
+				refreshToken, refreshErr := extractToken(c, mw.RefreshTokenHeadName, mw.RefreshTokenHeadName)
 				if refreshErr != nil {
 					c.JSON(401, gin.H{"error": "token expired"})
 					c.Abort()
 					return
 				}
 				
-				refreshClaims := factory()
-				refreshClaims, refreshErr = ValidateToken(c, config, refreshToken, refreshClaims, verifier)
+				refreshClaims, refreshErr := mw.validate(c, refreshToken)
 				if refreshErr != nil {
 					c.JSON(401, gin.H{"error": "refresh token invalid"})
 					c.Abort()
 					return
 				}
 				
-				data := extractData(refreshClaims)
-				newTokens, tokenErr := GenerateTokens(config, builder, data)
+				data := mw.Map(refreshClaims)
+				newTokens, tokenErr := mw.GenerateTokens(data)
 				if tokenErr != nil {
 					c.JSON(500, gin.H{"error": "failed to refresh token"})
 					c.Abort()
 					return
 				}
 				
-				SetAuthCookies(c, config, newTokens)
+				mw.SetAuthCookies(c, newTokens)
 				accessClaims = refreshClaims
 			} else {
 				c.JSON(401, gin.H{"error": "invalid token"})
@@ -217,7 +355,7 @@ func JWTAuthMiddleware[T ClaimsConstraint](
 		}
 		
 		if c.Request.Method != "GET" && c.Request.Method != "HEAD" {
-			csrfToken, err := GetTokenFromCookie(c, config.CSRFCookieName)
+			csrfToken, err := mw.GetTokenFromCookie(c)
 			if err != nil {
 				c.JSON(403, gin.H{"error": "csrf token missing"})
 				c.Abort()

@@ -21,6 +21,8 @@ import (
 	"github.com/creasty/defaults"
 )
 
+var Conf *Config
+
 type CacheType string
 type DbType string
 type RedisAuthType string
@@ -380,6 +382,8 @@ func LoadConfig(reader io.Reader) (*Config, error) {
 		slog.Error("error parsing env", slog.Any("error", err))
 		return nil, err
 	}
+
+	Conf = config
 
 	return config, nil
 }
