@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/adalundhe/micron/auth"
 	"github.com/adalundhe/micron/config"
 	"github.com/adalundhe/saml-gin"
 	"github.com/adalundhe/saml-gin/samlsp"
@@ -23,31 +24,15 @@ type SSOOpts struct {
 	OverrideMiddleware  samlsp.Middleware
 	OverrideKeyPair     *tls.Certificate
 	OverrideIDPMetadata *saml.EntityDescriptor
+	CreateClaims func () auth.SSOClaims
 }
 
-type SSOTokenAttrClaims struct {
-	Emails    []string `json:"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"`
-	FirstName []string `json:"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname"`
-	LastName  []string `json:"http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname"`
-}
 
-type SSOTokenClaims struct {
-	Issuer    string             `json:"iss"`
-	Audience  []string           `json:"aud"`
-	Expires   int64              `json:"exp"`
-	IssuedAt  int64              `json:"iat"`
-	NotBefore int64              `json:"nbf"`
-	Subject   string             `json:"sub"`
-	Attrs     SSOTokenAttrClaims `json:"attr"`
-}
 
 
 type SSOClaimsConstraint interface {
 	jwt.Claims
 }
-
-type SSOClaimsBuilder[T SSOClaimsConstraint] func(data map[string]interface{}, expiresAt, issuedAt, notBefore time.Time) T
-
 
 func loadKeyPair(
 	config *config.SSOConfig,
@@ -144,6 +129,7 @@ func NewSSOProvider(
 				Use:       "sig",
 			},
 		},
+		createClaims: opts.CreateClaims,
 	}, nil
 }
 
@@ -151,7 +137,7 @@ type SSO interface {
 	GetMiddlewareHandler() gin.HandlerFunc
 	GetACSHandler() func(c *gin.Context) (string, error)
 	GetMetadataHandler() interface{}
-	GetTokenFromCookie(ctx *gin.Context, jws JWSProvider, authorizator func(ctx *gin.Context, claims *SSOTokenClaims) (string, error)) (string, error)
+	GetTokenFromCookie(ctx *gin.Context, jws JWSProvider, authorizator func(ctx *gin.Context, claims auth.SSOClaims) (string, error)) (string, error)
 	Logout(ctx *gin.Context) (*url.URL, error)
 }
 
@@ -161,6 +147,7 @@ type SSOImpl struct {
 	env         string
 	config      *config.SSOConfig
 	signingJWKs []jose.JSONWebKey
+	createClaims func () auth.SSOClaims
 }
 
 func (s *SSOImpl) GetMiddlewareHandler() gin.HandlerFunc {
@@ -175,7 +162,7 @@ func (s *SSOImpl) GetMetadataHandler() interface{} {
 	return s.saml.GetMetadataHandler()
 }
 
-func (s *SSOImpl) GetTokenFromCookie(ctx *gin.Context, jws JWSProvider, authorizator func(ctx *gin.Context, claims *SSOTokenClaims) (string, error)) (string, error) {
+func (s *SSOImpl) GetTokenFromCookie(ctx *gin.Context, jws JWSProvider, authorizator func(ctx *gin.Context, claims auth.SSOClaims) (string, error)) (string, error) {
 	// Here GetTokenFromCookie extracts the SAML token and accepts an "authorizator"
 	// function verifySSOTokenFromClaims. This allows us to keep validation upfront
 	// with the API, make tweaks without breaking token extraction, etc.
@@ -193,7 +180,7 @@ func (s *SSOImpl) GetTokenFromCookie(ctx *gin.Context, jws JWSProvider, authoriz
 		return "", errors.NewForbidden(err, "No valid token found")
 	}
 
-	claims := &SSOTokenClaims{}
+	claims := s.createClaims()
 
 	if _, err := ctx.Cookie("jwt"); err == nil {
 		http.SetCookie(ctx.Writer, &http.Cookie{

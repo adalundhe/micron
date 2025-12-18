@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	micronAuth "github.com/adalundhe/micron/auth"
 	"github.com/adalundhe/micron/config"
 	"github.com/adalundhe/micron/internal/auth"
 	"github.com/adalundhe/micron/internal/otel"
@@ -32,6 +33,7 @@ type RunOptions struct {
 	LongDescription string
 }
 
+
 type App struct {
 	Name              string
 	Description       string
@@ -47,6 +49,7 @@ type App struct {
 	IDPFactory        func(ctx context.Context, cfg *config.Config, cache stores.Cache, providers *providerConfig, awsProviderFactory aws.AWSProviderFactory) (idp.IdentityProvider, error)
 	IDPEnabled        bool
 	Build             func(ctx context.Context, router *routes.Router, api *service.Service, cfg *config.Config) (*routes.Router, error)
+	CreateSSOClaims	  func() micronAuth.SSOClaims
 	cfg *config.Config
 	runCmd *cobra.Command
 }
@@ -281,7 +284,9 @@ func setupApi(
 
 	ssoProvider := providers.Overrides.SSO
 	if providers.Overrides.SSO == nil && providers.IsEnabled("sso") {
-		ssoProvider, err = provider.NewSSOProvider(cfg.Providers.SSO, cfg.Api, &provider.SSOOpts{})
+		ssoProvider, err = provider.NewSSOProvider(cfg.Providers.SSO, cfg.Api, &provider.SSOOpts{
+			CreateClaims: app.CreateSSOClaims,
+		})
 	}
 	if err != nil {
 		return nil, err
