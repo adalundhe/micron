@@ -32,6 +32,7 @@ type ClaimsBuilder[T ClaimsConstraint] func(data map[string]interface{}, expires
 type Verifier[T ClaimsConstraint] func(ctx *gin.Context, claims T) (T, error)
 
 type JWTMiddleware[T ClaimsConstraint] struct {
+	Envs map[string]*config.EnvironmentConfig
 	SecretKey        string
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL  time.Duration
@@ -51,7 +52,6 @@ type JWTMiddleware[T ClaimsConstraint] struct {
 	CreateEmpty func() T
 	SignerName string
 	Algorithm string
-	Keys map[string]interface{}
 	Signer provider.JWSProvider
 }
 
@@ -304,7 +304,7 @@ func New[T ClaimsConstraint](
 	mw JWTMiddleware[T],
 ) gin.HandlerFunc {
 
-	jwks, err := provider.NewJWSProviderFromEnvironments(config.Conf.DeployEnvs)
+	jwks, err := provider.NewJWSProviderFromEnvironments(mw.Envs)
 	if err != nil {
 		log.Fatalf("Could not load signing keys - %s", err.Error())
 	}
