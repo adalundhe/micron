@@ -510,7 +510,11 @@ func Create(app *App) (*App, error) {
 	return app, nil
 }
 
-func (a *App) Run(altDescriptors ...string) error {
+func (a *App) Run(loader func() error,altDescriptors ...string) error {
+
+	if err := loader(); err != nil {
+		return err
+	}
 
 	altDescriptor := ""
 	if len(altDescriptors) > 0 {
