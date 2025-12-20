@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/adalundhe/micron/auth"
 	"github.com/adalundhe/micron/config"
 	"github.com/adalundhe/saml-gin"
 	"github.com/adalundhe/saml-gin/samlsp"
@@ -24,7 +23,7 @@ type SSOOpts struct {
 	OverrideMiddleware  samlsp.Middleware
 	OverrideKeyPair     *tls.Certificate
 	OverrideIDPMetadata *saml.EntityDescriptor
-	CreateClaims func () auth.SSOClaims
+	CreateClaims func () interface{}
 }
 
 type SSOClaimsConstraint interface {
@@ -134,7 +133,7 @@ type SSO interface {
 	GetMiddlewareHandler() gin.HandlerFunc
 	GetACSHandler() func(c *gin.Context) (string, error)
 	GetMetadataHandler() interface{}
-	GetTokenFromCookie(ctx *gin.Context, jws JWSProvider, authorizator func(ctx *gin.Context, claims auth.SSOClaims) (string, error)) (string, error)
+	GetTokenFromCookie(ctx *gin.Context, jws JWSProvider, authorizator func(ctx *gin.Context, claims interface{}) (string, error)) (string, error)
 	Logout(ctx *gin.Context) (*url.URL, error)
 }
 
@@ -144,7 +143,7 @@ type SSOImpl struct {
 	env         string
 	config      *config.SSOConfig
 	signingJWKs []jose.JSONWebKey
-	createClaims func () auth.SSOClaims
+	createClaims func () interface{}
 }
 
 func (s *SSOImpl) GetMiddlewareHandler() gin.HandlerFunc {
@@ -159,7 +158,7 @@ func (s *SSOImpl) GetMetadataHandler() interface{} {
 	return s.saml.GetMetadataHandler()
 }
 
-func (s *SSOImpl) GetTokenFromCookie(ctx *gin.Context, jws JWSProvider, authorizator func(ctx *gin.Context, claims auth.SSOClaims) (string, error)) (string, error) {
+func (s *SSOImpl) GetTokenFromCookie(ctx *gin.Context, jws JWSProvider, authorizator func(ctx *gin.Context, claims interface{}) (string, error)) (string, error) {
 	// Here GetTokenFromCookie extracts the SAML token and accepts an "authorizator"
 	// function verifySSOTokenFromClaims. This allows us to keep validation upfront
 	// with the API, make tweaks without breaking token extraction, etc.

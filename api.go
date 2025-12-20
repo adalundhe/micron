@@ -11,30 +11,47 @@ import (
 	"strings"
 	"sync"
 
-	micronAuth "github.com/adalundhe/micron/auth"
+	"github.com/adalundhe/micron/auth"
 	"github.com/adalundhe/micron/config"
-	"github.com/adalundhe/micron/internal/auth"
-	"github.com/adalundhe/micron/internal/otel"
-	"github.com/adalundhe/micron/internal/provider"
-	"github.com/adalundhe/micron/internal/provider/aws"
-	"github.com/adalundhe/micron/internal/provider/idp"
-	"github.com/adalundhe/micron/internal/provider/jobs"
-	"github.com/adalundhe/micron/internal/stores"
+	"github.com/adalundhe/micron/internal"
+	"github.com/adalundhe/micron/otel"
+	"github.com/adalundhe/micron/provider"
+	"github.com/adalundhe/micron/provider/aws"
+	"github.com/adalundhe/micron/provider/idp"
+	"github.com/adalundhe/micron/provider/jobs"
 	"github.com/adalundhe/micron/routes"
-	"github.com/adalundhe/micron/service"
+	"github.com/adalundhe/micron/stores"
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/spf13/cobra"
 	"github.com/uptrace/bun"
 )
 
+var (
+	Providers *internal.ServiceProviders
+	Stores *internal.ServiceStores
+	Service *internal.Service
+	DB *bun.DB
+	Cache *stores.Cache
+	Jobs stores.JobStore
+)
+
+
+
 type RunOptions struct {
 	ShortDescription string
 	LongDescription string
 }
 
+type AuthOptions struct {
+	CreateSSOClaims	  func() interface{}
+	IDPFactory        func(ctx context.Context, cfg *config.Config, cache stores.Cache, providers *providerConfig, awsProviderFactory aws.AWSProviderFactory) (idp.IdentityProvider, error)
+	IDPEnabled        bool
+	RBACModelPath     string
+	RBACPolicyPath    string
+}
 
-type App struct {
+type SeverOptions struct {
 	Name              string
 	Description       string
 	Version           string
@@ -42,14 +59,21 @@ type App struct {
 	TLSPort           int
 	HealthCheckPort   int
 	ConfigPath        string
-	ModelPath         string
-	PolicyPath        string
 	LogLevel          string
-	EnabledProviders string
-	IDPFactory        func(ctx context.Context, cfg *config.Config, cache stores.Cache, providers *providerConfig, awsProviderFactory aws.AWSProviderFactory) (idp.IdentityProvider, error)
-	IDPEnabled        bool
-	Build             func(ctx context.Context, router *routes.Router, api *service.Service, cfg *config.Config) (*routes.Router, error)
-	CreateSSOClaims	  func() micronAuth.SSOClaims
+}
+
+type ProviderOptions struct {
+	Enabled  []string
+
+}
+
+type App struct {
+	Auth 	  		  *AuthOptions 
+	Server 		  	  *SeverOptions  
+	Providerds 		  *ProviderOptions
+
+	Build             func(ctx context.Context, router *routes.Router, cfg *config.Config) (*routes.Router, error)
+
 	cfg *config.Config
 	runCmd *cobra.Command
 }
@@ -65,43 +89,43 @@ func loadAppDefaults(app *App) (*App, error) {
 		log.Fatalf("Err. - Build function required")
 	}
 
-	if app.ConfigPath == "" {
-		app.ConfigPath = path.Join(cwd, "config.yml")
+	if app.Server.ConfigPath == "" {
+		app.Server.ConfigPath = path.Join(cwd, "config.yml")
 	}
 
-	if app.HealthCheckPort == 0 {
-		app.HealthCheckPort = 9081
+	if app.Server.HealthCheckPort == 0 {
+		app.Server.HealthCheckPort = 9081
 	}
 
-	if app.IDPEnabled && app.IDPFactory == nil {
+	if app.Auth.IDPEnabled && app.Auth.IDPFactory == nil {
 		log.Fatalf("Err. - IDP is enabled and IDP Factory not specified but required")
 	}
 
-	if app.LogLevel == "" {
-		app.LogLevel = "info"
+	if app.Server.LogLevel == "" {
+		app.Server.LogLevel = "info"
 	}
 
-	if app.ModelPath == "" {
-		app.ModelPath = path.Join(cwd, "model.conf")
+	if app.Auth.RBACModelPath == "" {
+		app.Auth.RBACModelPath = path.Join(cwd, "model.conf")
 	}
 
-	if app.PolicyPath == "" {
-		app.PolicyPath = path.Join(cwd, "policy.csv")
+	if app.Auth.RBACPolicyPath == "" {
+		app.Auth.RBACPolicyPath = path.Join(cwd, "policy.csv")
 	}
 
-	if app.Port == 0 {
-		app.Port = 8081
+	if app.Server.Port == 0 {
+		app.Server.Port = 8081
 	}
 
-	if app.TLSPort == 0 {
-		app.TLSPort = 8443
+	if app.Server.TLSPort == 0 {
+		app.Server.TLSPort = 8443
 	}
 
 	return app, nil
 }
 
 func loadConfig(app *App) (*config.Config, error) {
-	configPath := app.ConfigPath
+	configPath := app.Server.ConfigPath
 	if configPath == "" {
 		configPath = os.Getenv("CONFIG_PATH")
 
@@ -168,12 +192,12 @@ func createEnforcer(
 	casbinConfig *config.CasbinConfig,
 	idpProvider idp.IdentityProvider,
 ) (*casbin.Enforcer, error) {
-	modelFilepath := app.ModelPath
+	modelFilepath := app.Auth.RBACModelPath
 	if modelFilepath == "" {
 		modelFilepath = os.Getenv("AUTH_MODEL_PATH")
 	}
 
-	policyFilepath := app.PolicyPath
+	policyFilepath := app.Auth.RBACPolicyPath
 	if policyFilepath == "" {
 		policyFilepath = os.Getenv("AUTH_POLICY_PATH")
 	}
@@ -195,26 +219,26 @@ func createEnforcer(
 func setupApi(
 	ctx context.Context,
 	cfg *config.Config,
-	apiService *service.Service,
+	apiService *internal.Service,
 	providers *providerConfig,
 	app *App,
 ) (*routes.Router, error) {
 
-	if app.Name == "" {
-		app.Name = cfg.Name
+	if app.Server.Name == "" {
+		app.Server.Name = cfg.Name
 	}
 
-	if app.Description == "" {
-		app.Description = cfg.Description
+	if app.Server.Description == "" {
+		app.Server.Description = cfg.Description
 	}
 
-	if app.Version == "" {
-		app.Version = cfg.Version
+	if app.Server.Version == "" {
+		app.Server.Version = cfg.Version
 	}
 
 	providers.AddEnabledProviders(cfg.Providers.EnabledProviders)
 
-	err := otel.SetupOTelSDK(ctx, config.NewBuildInfo(app.Name, app.Version))
+	err := otel.SetupOTelSDK(ctx, config.NewBuildInfo(app.Server.Name, app.Server.Version))
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup opentelemetry: %w", err)
 	}
@@ -246,11 +270,11 @@ func setupApi(
 	stores.Users = dbUserRepo
 	jobStore := stores.NewJobStore(dbConn)
 
-	service.Cache = &cache
-	service.DB = dbConn
-	service.Jobs = jobStore
+	Cache = &cache
+	DB = dbConn
+	Jobs = jobStore
 
-	apiService.SetStores(&service.ServiceStores{
+	apiService.SetStores(&internal.ServiceStores{
 		Cache:    &cache,
 		DB:       dbConn,
 		Jobs:     jobStore,
@@ -258,8 +282,8 @@ func setupApi(
 	})
 
 	var idpProvider idp.IdentityProvider
-	if app.IDPEnabled {
-		idpProvider, err = app.IDPFactory(ctx, cfg, cache, providers, awsProviderFactory)
+	if app.Auth.IDPEnabled {
+		idpProvider, err = app.Auth.IDPFactory(ctx, cfg, cache, providers, awsProviderFactory)
 	}
 
 	if err != nil {
@@ -284,7 +308,7 @@ func setupApi(
 	ssoProvider := providers.Overrides.SSO
 	if providers.Overrides.SSO == nil && providers.IsEnabled("sso") {
 		ssoProvider, err = provider.NewSSOProvider(cfg.Providers.SSO, cfg.Api, &provider.SSOOpts{
-			CreateClaims: app.CreateSSOClaims,
+			CreateClaims: app.Auth.CreateSSOClaims,
 		})
 	}
 	if err != nil {
@@ -295,7 +319,7 @@ func setupApi(
 		auth.SSOEnabled = false
 	}
 
-	apiService.SetProviders(&service.ServiceProviders{
+	apiService.SetProviders(&internal.ServiceProviders{
 		AWS: awsProviderFactory,
 		Idp: idpProvider,
 		JWS: jwsProvider,
@@ -337,10 +361,13 @@ func setupApi(
 	router.SetNoMethod()
 	router.SetDefaults(routes.CreateDefaultHandlers())
 
+	Service = router.Api.Service
+	Providers = router.Service.Providers
+	Stores = router.Service.Stores
+
 	if router, err = app.Build(
 		ctx,
 		router,
-		apiService,
 		cfg,
 	); err != nil {
 		return nil, err
@@ -348,8 +375,8 @@ func setupApi(
 
 	if router.Api == nil {
 		router.Api = router.AddVariant(
-			app.Version, 
-			app.Description,
+			app.Server.Version, 
+			app.Server.Description,
 			&routes.Routes{
 				Groups: router.Groups,
 				Endpoints: router.Routes,
@@ -367,14 +394,12 @@ func setupApi(
 		return nil, err
 	}
 
-	service.API = router.Api.Service
-
 	router.Build()
 
 	return router, nil
 }
 
-func createHealthCheckApi(api *service.Service) (*routes.Router, error) {
+func createHealthCheckApi(api *internal.Service) (*routes.Router, error) {
 	healthCheckApi, err := routes.NewRouter("/", api)
 	if err != nil {
 		return nil, err
@@ -448,7 +473,7 @@ func Create(app *App) (*App, error) {
 		Long: fmt.Sprintf(
 			`Starts and runs the API on the provided or default
 		port (%d).`,
-			app.Port,
+			app.Server.Port,
 		),
 		Run: func(cmd *cobra.Command, args []string) {
 
@@ -471,13 +496,13 @@ func Create(app *App) (*App, error) {
 				log.Fatalf("error loading config - %s", err)
 			}
 
-			apiService := service.NewService(app.cfg.Api.Env)
+			apiService := internal.NewService(app.cfg.Api.Env)
 			srv, err := setupApi(
 				ctx,
 				app.cfg,
 				apiService,
 				createProviderConfig(
-					strings.Split(app.EnabledProviders, ","),
+					app.Providerds.Enabled,
 				),
 				app,
 			)
@@ -491,25 +516,25 @@ func Create(app *App) (*App, error) {
 				log.Fatalf("encountered error starting healthcheck API - %s", err)
 			}
 
-			srv.Run(app.Port, &routes.RouterOptions{
-				TLSPort: app.TLSPort,
+			srv.Run(app.Server.Port, &routes.RouterOptions{
+				TLSPort: app.Server.TLSPort,
 			})
 
-			healthCheckServer.Run(app.HealthCheckPort, &routes.RouterOptions{})
+			healthCheckServer.Run(app.Server.HealthCheckPort, &routes.RouterOptions{})
 
 			runServers(srv, healthCheckServer)
 		},
 	}
 
-	runCmd.Flags().IntVarP(&app.Port, "port", "p", app.Port, "Set server port")
-	runCmd.Flags().IntVarP(&app.TLSPort, "tls-port", "t", app.TLSPort, "Set server port")
-	runCmd.Flags().IntVarP(&app.HealthCheckPort, "check-port", "c", app.HealthCheckPort, "Set server port")
-	runCmd.Flags().StringVarP(&app.ConfigPath, "config", "C", "config.yml", "Path to the config.yaml")
-	runCmd.Flags().StringVarP(&app.ModelPath, "model", "M", "model.conf", "Path to the Casbin model.conf")
-	runCmd.Flags().StringVarP(&app.PolicyPath, "policy", "P", "policy.csv", "Path to the Casbin policy.csv")
-	runCmd.Flags().StringVarP(&app.EnabledProviders, "disable", "d", "", "A comma-delimited list of providers to disable")
-	runCmd.Flags().StringVarP(&app.LogLevel, "log-level", "l", "info", "Set server log level")
-	runCmd.Flags().StringVarP(&app.Version, "version", "v", "v1", "Set the API version")
+	runCmd.Flags().IntVarP(&app.Server.Port, "port", "p", app.Server.Port, "Set server port")
+	runCmd.Flags().IntVarP(&app.Server.TLSPort, "tls-port", "t", app.Server.TLSPort, "Set server port")
+	runCmd.Flags().IntVarP(&app.Server.HealthCheckPort, "check-port", "c", app.Server.HealthCheckPort, "Set server port")
+	runCmd.Flags().StringVarP(&app.Server.ConfigPath, "config", "C", "config.yml", "Path to the config.yaml")
+	runCmd.Flags().StringVarP(&app.Auth.RBACModelPath, "model", "M", "model.conf", "Path to the Casbin model.conf")
+	runCmd.Flags().StringVarP(&app.Auth.RBACPolicyPath, "policy", "P", "policy.csv", "Path to the Casbin policy.csv")
+	runCmd.Flags().StringArrayVarP(&app.Providerds.Enabled, "disable", "d", []string{}, "A comma-delimited list of providers to disable")
+	runCmd.Flags().StringVarP(&app.Server.LogLevel, "log-level", "l", "info", "Set server log level")
+	runCmd.Flags().StringVarP(&app.Server.Version, "version", "v", "v1", "Set the API version")
 
 	app.runCmd = runCmd
 
@@ -529,8 +554,8 @@ func (a *App) Run(loader func() error,altDescriptors ...string) error {
 	
 
 	rootCmd := &cobra.Command{
-		Use:   strings.ToLower(a.Name),
-		Short: a.Description,
+		Use:   strings.ToLower(a.Server.Name),
+		Short: a.Server.Description,
 		Long: altDescriptor,
 	}
 

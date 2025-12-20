@@ -6,7 +6,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/adalundhe/micron/internal/models"
+	"github.com/adalundhe/micron/models"
 	"github.com/uptrace/bun"
 )
 

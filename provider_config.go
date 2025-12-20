@@ -3,9 +3,9 @@ package micron
 import (
 	"strings"
 
-	"github.com/adalundhe/micron/internal/provider"
-	"github.com/adalundhe/micron/internal/provider/aws"
-	"github.com/adalundhe/micron/internal/provider/idp"
+	"github.com/adalundhe/micron/provider"
+	"github.com/adalundhe/micron/provider/aws"
+	"github.com/adalundhe/micron/provider/idp"
 	"github.com/casbin/casbin/v2"
 )
 

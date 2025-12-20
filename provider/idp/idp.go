@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/adalundhe/micron/internal/models"
+	"github.com/adalundhe/micron/models"
 )
 
 var (

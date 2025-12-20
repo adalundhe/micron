@@ -10,13 +10,11 @@ import (
 type JobProvider string
 
 const (
-	KubernetesJobProvider JobProvider = "kubernetes"
 	InternalJobProvider   JobProvider = "internal"
 )
 
 func GetJobProviders() []JobProvider {
 	return []JobProvider{
-		KubernetesJobProvider,
 		InternalJobProvider,
 	}
 }

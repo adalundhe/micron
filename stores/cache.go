@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/adalundhe/micron/config"
-	"github.com/adalundhe/micron/internal/provider"
+	"github.com/adalundhe/micron/provider"
 	"github.com/redis/go-redis/v9"
 )
 

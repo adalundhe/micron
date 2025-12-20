@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/adalundhe/micron/service"
+	"github.com/adalundhe/micron/internal"
 	"github.com/gin-gonic/gin"
 	"github.com/loopfz/gadgeto/tonic"
 	swagger "github.com/num30/gin-swagger-ui"
@@ -26,7 +26,7 @@ type Router struct {
 	Api         *Variant
 	Engine      *gin.Engine
 	Spec        *fizz.Fizz
-	Service      *service.Service
+	Service      *internal.Service
 	server      *http.Server
 	tlsServer   *http.Server
 	quitChannel chan os.Signal
@@ -61,7 +61,7 @@ type Routes struct {
 }
 
 
-func NewRouter(path string, service *service.Service) (*Router, error) {
+func NewRouter(path string, service *internal.Service) (*Router, error) {
 	// Create gin engine without default middleware
 	engine := gin.New()
 
@@ -161,7 +161,7 @@ func (r *Router) AddVariant(
 	}
 
 	r.Api = newVariant
-	r.Api.SetService(r.Service)
+	r.Api.setService(r.Service)
 
 
 	return newVariant

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/adalundhe/micron/config"
-	"github.com/adalundhe/micron/internal/provider"
+	"github.com/adalundhe/micron/provider"
 	"github.com/gin-gonic/gin"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/golang-jwt/jwt/v5"

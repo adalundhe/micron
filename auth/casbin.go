@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/adalundhe/micron/internal/provider/idp"
+	"github.com/adalundhe/micron/provider/idp"
 	"github.com/casbin/casbin/v2/log"
 	"github.com/casbin/casbin/v2/rbac"
 )

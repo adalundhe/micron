@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/adalundhe/micron/internal/models"
-	"github.com/adalundhe/micron/internal/stores"
+	"github.com/adalundhe/micron/models"
+	"github.com/adalundhe/micron/stores"
 	"github.com/go-redsync/redsync/v4"
 	rsredis "github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/hibiken/asynq"

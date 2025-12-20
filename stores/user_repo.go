@@ -6,7 +6,7 @@ import (
 
 	"github.com/uptrace/bun"
 
-	"github.com/adalundhe/micron/internal/models"
+	"github.com/adalundhe/micron/models"
 )
 
 var _ models.UserRepository = (*DbUserRepository)(nil)

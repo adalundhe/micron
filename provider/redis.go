@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/adalundhe/micron/config"
-	awsprovider "github.com/adalundhe/micron/internal/provider/aws"
+	awsprovider "github.com/adalundhe/micron/provider/aws"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/redis/go-redis/v9"
