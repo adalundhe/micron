@@ -12,7 +12,7 @@ import (
 
 type JobStore interface {
 	GetJobByID(ctx context.Context, id int64) (*models.JobInfo, error)
-	GetJobByJobIdAndProvider(ctx context.Context, jobId string, jobProvider models.JobProvider) (*models.JobInfo, error)
+	GetJobByJobIdAndProvider(ctx context.Context, jobId string) (*models.JobInfo, error)
 	UpdateJob(ctx context.Context, job *models.JobInfo) error
 	CreateOrUpdateJob(ctx context.Context, job *models.JobInfo, incrementRetry bool) error
 	DeleteJob(ctx context.Context, id int64) error
@@ -43,7 +43,7 @@ func (s *JobStoreImpl) createJob(ctx context.Context, job *models.JobInfo) error
 
 func (s *JobStoreImpl) CreateOrUpdateJob(ctx context.Context, job *models.JobInfo, incrementRetry bool) error {
 	if job.Id == 0 {
-		current_job, err := s.GetJobByJobIdAndProvider(ctx, job.JobId, job.Provider)
+		current_job, err := s.GetJobByJobIdAndProvider(ctx, job.JobId)
 		if err != nil {
 			return s.createJob(ctx, job)
 		}
@@ -65,10 +65,10 @@ func (s *JobStoreImpl) GetJobByID(ctx context.Context, id int64) (*models.JobInf
 	return job, nil
 }
 
-func (s *JobStoreImpl) GetJobByJobIdAndProvider(ctx context.Context, jobId string, jobProvider models.JobProvider) (*models.JobInfo, error) {
+func (s *JobStoreImpl) GetJobByJobIdAndProvider(ctx context.Context, jobId string) (*models.JobInfo, error) {
 	job := new(models.JobInfo)
-	err := s.db.NewSelect().Model(job).Where("job_id = ? AND provider = ?", jobId, string(jobProvider)).Scan(ctx)
-	if err != nil || job == nil {
+	err := s.db.NewSelect().Model(job).Where("job_id = ?", jobId).Scan(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("job not found: %w", err)
 	}
 	return job, nil

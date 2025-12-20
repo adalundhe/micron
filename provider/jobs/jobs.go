@@ -27,6 +27,11 @@ import (
 type JobType string
 
 type JobQueueName string
+type JobProvider string
+
+const (
+	internalJobProvider   JobProvider = "internal"
+)
 
 const (
 	JobQueueNameDefault = JobQueueName("default")
@@ -59,7 +64,7 @@ type JobPayloadInfo struct {
 type InternalJobManager interface {
 	Close() error
 	StartServer() error
-	RegisterHandler(provider models.JobProvider, jobType JobType, handler asynq.Handler) error
+	RegisterHandler(jobType JobType, handler asynq.Handler) error
 	ListJobTypes() []JobType
 	RegisterScheduledTask(cronSpec string, task *asynq.Task, opts ...asynq.Option) (string, error)
 	SubmitTask(ctx context.Context, task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
@@ -174,7 +179,7 @@ func (m *JobTrackingMiddlewareImpl) WrapHandle(w asynq.Handler) asynq.Handler {
 		jobInfo := &models.JobInfo{
 			JobId:      taskID,
 			JobName:    jobName,
-			Provider:   models.JobProvider(provider),
+			Provider:   string(internalJobProvider),
 			Parameters: payload,
 			Status:     "processing",
 		}
@@ -216,7 +221,7 @@ func (m *JobTrackingMiddlewareImpl) WrapHandle(w asynq.Handler) asynq.Handler {
 // The task's type is set to provider:jobType and the payload is set to the given payload.
 // Any additional options are passed through to the underlying asynq.NewTask call.
 // in general this should only be called by Task struct methods or by testing code.
-func NewAsyncTask(ctx context.Context, provider models.JobProvider, jobType JobType, payload []byte, opts ...asynq.Option) *asynq.Task {
+func NewAsyncTask(ctx context.Context, jobType JobType, payload []byte, opts ...asynq.Option) *asynq.Task {
 	span := trace.SpanFromContext(ctx)
 	if span.SpanContext().IsValid() {
 		var payloadMap map[string]interface{}
@@ -231,7 +236,7 @@ func NewAsyncTask(ctx context.Context, provider models.JobProvider, jobType JobT
 			slog.Error("Error marshalling payload with trace info", slog.Any("error", err))
 		}
 	}
-	return asynq.NewTask(string(provider)+":"+string(jobType), payload, opts...)
+	return asynq.NewTask(string(internalJobProvider)+":"+string(jobType), payload, opts...)
 }
 
 // NewInternalJobManager creates an InternalJobManager that manages the task queue.
@@ -441,12 +446,12 @@ func (jm *InternalJobManagerImpl) runLeaderElection(ctx context.Context) {
 // RegisterHandler registers a handler for a specific job provider and job type.
 // The handler will be called whenever a task with the specified job provider and
 // job type is received.
-func (jm *InternalJobManagerImpl) RegisterHandler(provider models.JobProvider, jobType JobType, handler asynq.Handler) error {
+func (jm *InternalJobManagerImpl) RegisterHandler(jobType JobType, handler asynq.Handler) error {
 	if jm.started {
 		return fmt.Errorf("server already started, cannot register handler")
 	}
 	jm.jobTypes = append(jm.jobTypes, jobType)
-	jobUrn := fmt.Sprintf("%s:%s", provider, jobType)
+	jobUrn := fmt.Sprintf("%s:%s", internalJobProvider, jobType)
 	jm.mux.Handle(jobUrn, jm.middleware.WrapHandle(handler))
 	return nil
 }
@@ -469,9 +474,6 @@ func (jm *InternalJobManagerImpl) SubmitTask(ctx context.Context, task *asynq.Ta
 		return nil, fmt.Errorf("payloads must be json serializable: %w", err)
 	}
 
-	if !slices.Contains(models.GetJobProviders(), models.JobProvider(provider)) {
-		return nil, fmt.Errorf("invalid job provider: %s", provider)
-	}
 	if !slices.Contains(jm.jobTypes, JobType(jobType)) {
 		return nil, fmt.Errorf("invalid job type: %s", jobType)
 	}

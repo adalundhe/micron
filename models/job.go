@@ -7,24 +7,13 @@ import (
 	"github.com/uptrace/bun"
 )
 
-type JobProvider string
-
-const (
-	InternalJobProvider   JobProvider = "internal"
-)
-
-func GetJobProviders() []JobProvider {
-	return []JobProvider{
-		InternalJobProvider,
-	}
-}
 
 type JobInfo struct {
 	bun.BaseModel `bun:"table:job_info"`
 	Id            int64           `bun:"id,pk,autoincrement"`
 	JobId         string          `bun:"job_id"` // this is the ID from the provider
 	JobName       string          `bun:"job_name"`
-	Provider      JobProvider     `bun:"provider"`
+	Provider      string     	  `bun:"provider"`
 	Status        string          `bun:"status"`
 	StartTime     time.Time       `bun:"start_time"`
 	EndTime       time.Time       `bun:"end_time"`
