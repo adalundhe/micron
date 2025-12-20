@@ -65,9 +65,9 @@ type ProviderOptions struct {
 }
 
 type App struct {
-	Auth 	  		  *AuthOptions 
-	Server 		  	  *SeverOptions  
-	Providers 		  *ProviderOptions
+	Auth 	  		  AuthOptions 
+	Server 		  	  SeverOptions  
+	Providers 		  ProviderOptions
 
 	Build             func(ctx context.Context, router *routes.Router, cfg *config.Config) (*routes.Router, error)
 
