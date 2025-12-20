@@ -357,9 +357,9 @@ func setupApi(
 	router.SetNoMethod()
 	router.SetDefaults(routes.CreateDefaultHandlers())
 
-	Service = router.Api.Service
-	Providers = router.Service.Providers
-	Stores = router.Service.Stores
+	Service = apiService
+	Providers = apiService.Providers
+	Stores = apiService.Stores
 	Config = cfg
 	
 
