@@ -11,11 +11,10 @@ import (
 )
 
 type JobStore interface {
-	CreateJob(ctx context.Context, job *models.JobInfo) error
 	GetJobByID(ctx context.Context, id int64) (*models.JobInfo, error)
 	GetJobByJobIdAndProvider(ctx context.Context, jobId string, jobProvider models.JobProvider) (*models.JobInfo, error)
 	UpdateJob(ctx context.Context, job *models.JobInfo) error
-	UpsertJob(ctx context.Context, job *models.JobInfo, incrementRetry bool) error
+	CreateOrUpdateJob(ctx context.Context, job *models.JobInfo, incrementRetry bool) error
 	DeleteJob(ctx context.Context, id int64) error
 	GetPage(ctx context.Context, jobName string, cursor *Cursor, limit int) ([]*models.JobInfo, *Cursor, error)
 }
@@ -32,7 +31,7 @@ func NewJobStore(db *bun.DB) *JobStoreImpl {
 // This should generally not be used directly and instead use UpsertJob
 // this is because JobId and Provider are not unique in the database due to the partitioned table
 // UpsertJob will check if the job already exists and update it if it does
-func (s *JobStoreImpl) CreateJob(ctx context.Context, job *models.JobInfo) error {
+func (s *JobStoreImpl) createJob(ctx context.Context, job *models.JobInfo) error {
 	if job.Id != 0 {
 		return fmt.Errorf("do not set id when creating job")
 	}
@@ -42,11 +41,11 @@ func (s *JobStoreImpl) CreateJob(ctx context.Context, job *models.JobInfo) error
 	return err
 }
 
-func (s *JobStoreImpl) UpsertJob(ctx context.Context, job *models.JobInfo, incrementRetry bool) error {
+func (s *JobStoreImpl) CreateOrUpdateJob(ctx context.Context, job *models.JobInfo, incrementRetry bool) error {
 	if job.Id == 0 {
 		current_job, err := s.GetJobByJobIdAndProvider(ctx, job.JobId, job.Provider)
 		if err != nil {
-			return s.CreateJob(ctx, job)
+			return s.createJob(ctx, job)
 		}
 		job.Id = current_job.Id
 	}

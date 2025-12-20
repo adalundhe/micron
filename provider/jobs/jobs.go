@@ -178,7 +178,7 @@ func (m *JobTrackingMiddlewareImpl) WrapHandle(w asynq.Handler) asynq.Handler {
 			Parameters: payload,
 			Status:     "processing",
 		}
-		err = m.JobStore.UpsertJob(ctx, jobInfo, true)
+		err = m.JobStore.CreateOrUpdateJob(ctx, jobInfo, true)
 		if err != nil {
 			slog.Error("Failed to upsert job", slog.Any("error", err))
 			return fmt.Errorf("failed to upsert job: %w", err)
@@ -203,7 +203,7 @@ func (m *JobTrackingMiddlewareImpl) WrapHandle(w asynq.Handler) asynq.Handler {
 			span.SetAttributes(attribute.String("queue", "unknown"))
 		}
 		slog.Info("Job completed", slog.Any("jobInfo", jobInfoNoPayload), "queue", queue)
-		err = m.JobStore.UpsertJob(ctx, jobInfo, false)
+		err = m.JobStore.CreateOrUpdateJob(ctx, jobInfo, false)
 		if err != nil {
 			return fmt.Errorf("failed to upsert job: %w", err)
 		}
