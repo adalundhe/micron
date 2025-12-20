@@ -34,6 +34,7 @@ var (
 	DB *bun.DB
 	Cache *stores.Cache
 	Jobs stores.JobStore
+	Config *config.Config
 )
 
 
@@ -364,6 +365,7 @@ func setupApi(
 	Service = router.Api.Service
 	Providers = router.Service.Providers
 	Stores = router.Service.Stores
+	Config = cfg
 
 	if router, err = app.Build(
 		ctx,
