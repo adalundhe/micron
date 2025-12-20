@@ -33,11 +33,8 @@ var (
 	Service *internal.Service
 	DB *bun.DB
 	Cache *stores.Cache
-	Jobs stores.JobStore
 	Config *config.Config
 )
-
-
 
 type RunOptions struct {
 	ShortDescription string
@@ -65,13 +62,12 @@ type SeverOptions struct {
 
 type ProviderOptions struct {
 	Enabled  []string
-
 }
 
 type App struct {
 	Auth 	  		  *AuthOptions 
 	Server 		  	  *SeverOptions  
-	Providerds 		  *ProviderOptions
+	Providers 		  *ProviderOptions
 
 	Build             func(ctx context.Context, router *routes.Router, cfg *config.Config) (*routes.Router, error)
 
@@ -273,7 +269,6 @@ func setupApi(
 
 	Cache = &cache
 	DB = dbConn
-	Jobs = jobStore
 
 	apiService.SetStores(&internal.ServiceStores{
 		Cache:    &cache,
@@ -366,6 +361,7 @@ func setupApi(
 	Providers = router.Service.Providers
 	Stores = router.Service.Stores
 	Config = cfg
+	
 
 	if router, err = app.Build(
 		ctx,
@@ -504,7 +500,7 @@ func Create(app *App) (*App, error) {
 				app.cfg,
 				apiService,
 				createProviderConfig(
-					app.Providerds.Enabled,
+					app.Providers.Enabled,
 				),
 				app,
 			)
@@ -534,7 +530,7 @@ func Create(app *App) (*App, error) {
 	runCmd.Flags().StringVarP(&app.Server.ConfigPath, "config", "C", "config.yml", "Path to the config.yaml")
 	runCmd.Flags().StringVarP(&app.Auth.RBACModelPath, "model", "M", "model.conf", "Path to the Casbin model.conf")
 	runCmd.Flags().StringVarP(&app.Auth.RBACPolicyPath, "policy", "P", "policy.csv", "Path to the Casbin policy.csv")
-	runCmd.Flags().StringArrayVarP(&app.Providerds.Enabled, "disable", "d", []string{}, "A comma-delimited list of providers to disable")
+	runCmd.Flags().StringArrayVarP(&app.Providers.Enabled, "disable", "d", []string{}, "A comma-delimited list of providers to disable")
 	runCmd.Flags().StringVarP(&app.Server.LogLevel, "log-level", "l", "info", "Set server log level")
 	runCmd.Flags().StringVarP(&app.Server.Version, "version", "v", "v1", "Set the API version")
 
