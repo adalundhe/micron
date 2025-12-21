@@ -39,7 +39,7 @@ type ServiceStores struct {
 type Service struct {
 	Config    *config.Config
 	Env       map[string]*config.EnvironmentConfig
-	Jobs      jobs.InternalJobManager
+	Jobs      jobs.JobManager
 	Providers *ServiceProviders
 	Stores    *ServiceStores
 }
@@ -80,7 +80,7 @@ func (a *Service) SetEnvironment(config map[string]*config.EnvironmentConfig) {
 	}
 }
 
-func (a *Service) SetJobManager(manager jobs.InternalJobManager) {
+func (a *Service) SetJobManager(manager jobs.JobManager) {
 	a.Jobs = manager
 }
 

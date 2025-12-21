@@ -61,7 +61,7 @@ type JobPayloadInfo struct {
 	SpanID  string `json:"span_id,omitempty"`
 }
 
-type InternalJobManager interface {
+type JobManager interface {
 	Close() error
 	StartServer() error
 	RegisterHandler(jobType JobType, handler asynq.Handler) error
@@ -252,7 +252,7 @@ func NewAsyncTask(ctx context.Context, jobType JobType, payload []byte, opts ...
 //
 // The InternalJobManager uses the given auditRepository to store audit events.
 // The auditRepository must be a valid AuditRepository.
-func NewInternalJobManager(ctx context.Context, redisClient *redis.Client, jobStore stores.JobStore, schedulerOpts ...*asynq.SchedulerOpts) InternalJobManager {
+func NewInternalJobManager(ctx context.Context, redisClient *redis.Client, jobStore stores.JobStore, schedulerOpts ...*asynq.SchedulerOpts) JobManager {
 
 	client := asynq.NewClientFromRedisClient(redisClient)
 
